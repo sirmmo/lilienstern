@@ -1,0 +1,23 @@
+name = "Arresting the leaders"
+question = "What happens when the police takes down the leadership of the largest gang?"
+description = """
+On day 365 the largest gang (by territory) loses its crew and part of its presence everywhere
+it holds. Does the city become quieter, or do rivals fight over what it leaves behind?
+"""
+game = "../games/gangland"
+days = 730
+seeds = 12
+report = ["violence", "captures", "hotspots", "hotspot_places", "hhi", "top_share", "held", "gangs_alive", "m.Decapitations"]
+
+[[variant]]
+name = "no arrests"
+
+[[variant]]
+name = "partial"
+description = "it keeps 40% of its presence"
+set = { decap_day = 365, decap_factor = 0.4 }
+
+[[variant]]
+name = "total"
+description = "it keeps 10%"
+set = { decap_day = 365, decap_factor = 0.1 }

@@ -1,0 +1,25 @@
+name = "Economic shock"
+question = "When half of the city suddenly gets poorer, where does the violence go?"
+description = """
+On day 365 the eastern half of the city loses part of its wealth. Poorer neighbourhoods recruit
+more (safehouses recruit where wealth is at most `recruit_wealth`) and pay less protection
+(rackets need wealth of 25). `m.HotDaysEast` and `m.HotDaysWest` count violent
+neighbourhood-days in each half.
+"""
+game = "../games/gangland"
+days = 730
+seeds = 12
+report = ["m.HotDaysEast", "m.HotDaysWest", "violence", "captures", "held", "map.Wealth", "m.Recruited", "m.Extortion", "m.Sales", "m.Raids"]
+
+[[variant]]
+name = "no shock"
+
+[[variant]]
+name = "mild"
+description = "the east keeps 80% of its wealth"
+set = { shock_day = 365, shock_factor = 0.8 }
+
+[[variant]]
+name = "severe"
+description = "the east keeps 40%"
+set = { shock_day = 365, shock_factor = 0.4 }

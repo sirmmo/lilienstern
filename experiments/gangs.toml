@@ -1,0 +1,23 @@
+name = "How many gangs"
+question = "Is a city with many small gangs more violent than one with a few large ones?"
+description = "The same city with 2, 4, 8 and 16 gangs starting in its poorer neighbourhoods."
+game = "../games/gangland"
+days = 730
+seeds = 12
+report = ["violence", "captures", "hotspots", "hotspot_places", "held", "hhi", "top_share", "gangs_alive", "m.Raids", "m.Sales"]
+
+[[variant]]
+name = "2 gangs"
+set = { gangs = 2 }
+
+[[variant]]
+name = "4 gangs"
+set = { gangs = 4 }
+
+[[variant]]
+name = "8 gangs"
+set = { gangs = 8 }
+
+[[variant]]
+name = "16 gangs"
+set = { gangs = 16 }

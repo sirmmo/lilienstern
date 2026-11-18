@@ -1,0 +1,15 @@
+[package]
+name = "lilienstern-cli"
+description = "Run Lilienstern games and experiments from the command line"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "lilienstern"
+path = "src/main.rs"
+
+[dependencies]
+lilienstern.workspace = true

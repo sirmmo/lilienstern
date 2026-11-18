@@ -1,0 +1,51 @@
+# Gangland's economy, in GlassBox rules.
+
+unitRule recruit                 # safehouses turn poverty into crew
+    appliesTo safehouse
+    map Wealth atMost $recruit_wealth
+    global Crew out $crew_per_day
+    map Heat out 0.2
+    log Recruited $crew_per_day
+end
+
+unitRule cook                    # labs make product; agents carry it to the gang's corners
+    appliesTo lab
+    global Cash in 2
+    agent Product out $lab_output
+    map Heat out 1 radius 1
+end
+
+unitRule deal                    # corners sell it
+    appliesTo corner
+    agent Product in 4
+    global Cash out $corner_take
+    map Heat out 0.6
+    log Sales 4
+end
+
+unitRule extort                  # rackets bleed rich neighbourhoods
+    appliesTo racket
+    map Wealth atLeast 25
+    global Cash out $racket_take
+    map Wealth in 0.02
+    map Heat out 0.5
+    log Extortion $racket_take
+end
+
+agentRule trafficking            # product moving through a neighbourhood
+    condition resource=Product
+    area Traffic 1 0
+    area Heat 0.05 0
+end
+
+mapRule fear                     # violence drives wealth away and draws attention
+    map Violence greater 10
+    map Wealth in 0.1
+    map Heat out 1
+end
+
+mapRule recovery                 # quiet neighbourhoods slowly recover
+    rate 5
+    map Violence less 1
+    map Wealth out 0.05
+end

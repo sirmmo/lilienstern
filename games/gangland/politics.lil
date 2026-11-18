@@ -1,0 +1,210 @@
+# Gangland's politics: what gangs and police decide, and what happens.
+# A decision is taken by the AI when it scores best among the decisions it can afford.
+
+# ---------- gangs ----------
+
+decision expand                  # move into a neighbouring block
+    for gang
+    target adjacent
+    cost global Crew $expand_crew
+    if rival less 15
+    do presence add $expand_presence
+    weight 6
+    weight unowned 4
+    weight map Wealth 0.05
+    weight map Density 0.0002
+    weight map Police -0.1
+    weight rival -0.15
+end
+
+decision reinforce               # answer a rival moving in
+    for gang
+    target owned
+    cost global Crew 2
+    if rival greater 5
+    do presence add $reinforce_presence
+    weight 4
+    weight rival 0.3
+end
+
+decision hold_ground             # keep up presence where it is fading
+    for gang
+    target owned
+    cost global Crew 1
+    if presence less 28
+    do presence add 8
+    weight 3
+    weight units 2
+end
+
+decision attack                  # hit a rival's block
+    for gang
+    target adjacent
+    if owner other
+    cost global Crew $attack_crew
+    do rivals add -$attack_damage
+    do presence add $expand_presence
+    do map Violence add 15
+    do map Heat add 10
+    log Attacks
+    weight $aggression
+    weight map Wealth 0.06
+    weight presence 0.1
+    weight rival -0.05
+end
+
+decision regroup                 # come back to blocks left empty
+    for gang
+    target present
+    if owner none
+    if rival less 15
+    cost global Crew $expand_crew
+    do presence add $expand_presence
+    weight 5
+    weight presence 0.2
+    weight map Wealth 0.05
+end
+
+decision open_corner
+    for gang
+    target owned
+    cost global Cash $corner_cost
+    if units corner less 1
+    do build corner
+    weight 5
+    weight map Density 0.0005
+    weight map Police -0.1
+end
+
+decision open_racket
+    for gang
+    target owned
+    cost global Cash $racket_cost
+    if map Wealth atLeast 35
+    if units racket less 1
+    do build racket
+    weight 4
+    weight map Wealth 0.08
+end
+
+decision open_lab
+    for gang
+    target owned
+    cost global Cash $lab_cost
+    if units lab less 1
+    if units corner atLeast 1
+    if map Traffic less 0.5          # its corner gets no product
+    do build lab
+    weight 8
+    weight map Police -0.05
+end
+
+decision hire                    # turn cash into muscle
+    for gang
+    target none
+    cost global Cash $hire_cost
+    if global Crew less 12           # only when short of crew
+    do global Crew add $hire_crew
+    log Hired $hire_crew
+    weight 7
+end
+
+decision open_safehouse
+    for gang
+    target owned
+    cost global Cash $safehouse_cost
+    if map Wealth atMost $recruit_wealth
+    if units safehouse less 1
+    do build safehouse
+    weight 3
+end
+
+decision bribe                   # make the police look elsewhere
+    for gang
+    target owned
+    cost global Cash $bribe_cost
+    if map Police greater 40
+    do map Police mul 0.5
+    log Bribes
+    weight map Police 0.08
+end
+
+# ---------- police ----------
+
+decision patrol
+    for police
+    target any
+    cost global Budget $patrol_cost
+    do map Police add $patrol_strength
+    log Patrols
+    weight $police_w_flat
+    weight map Violence $police_w_violence
+    weight map Heat $police_w_heat
+    weight map Wealth $police_w_wealth
+    weight map Police -0.02
+end
+
+decision raid
+    for police
+    target any
+    cost global Budget $raid_cost
+    if map Heat greater $raid_heat
+    if units greater 0
+    do destroy all
+    do all presence mul 0.5
+    do modifier lockdown 20
+    log Raids
+    weight 4
+    weight map Heat 0.1
+    weight units 1
+end
+
+modifier lockdown                # after a raid: business is slow and the street is watched
+    output mul 0.3
+    daily map Heat add -2
+end
+
+# ---------- events ----------
+
+event arrests
+    scope place
+    if map Police greater 30
+    if owner any
+    chance 0.05
+    do global Crew add -1
+    log Arrests
+end
+
+event shock                      # the eastern half of the city loses wealth
+    scope place
+    if day is $shock_day
+    if map X greater 0
+    do map Wealth mul $shock_factor
+    log Shocked
+end
+
+event decapitation               # the largest gang's leadership is arrested
+    scope faction
+    for gang
+    if day is $decap_day
+    if rank is 1
+    do turf mul $decap_factor
+    do global Crew set 0
+    log Decapitations
+end
+
+# ---------- measurements ----------
+
+event east_hotspot               # violent days in each half of the city
+    scope place
+    if map X greater 0
+    if map Violence greater 5
+    log HotDaysEast
+end
+
+event west_hotspot
+    scope place
+    if map X atMost 0
+    if map Violence greater 5
+    log HotDaysWest
+end

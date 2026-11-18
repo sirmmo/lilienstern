@@ -1,0 +1,10 @@
+[package]
+name = "glassbox"
+description = "The GlassBox rule language and resource-flow engine, on a graph of places"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]

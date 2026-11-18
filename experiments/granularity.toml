@@ -1,0 +1,31 @@
+name = "Neighbourhood size"
+question = "Do the results depend on how finely the city is cut? (the modifiable areal unit problem)"
+description = """
+The same city (same wealth and density everywhere, from the same seed) is cut into about 225,
+900 and 3600 neighbourhoods. The rules are written per neighbourhood, so a gang's move into a
+neighbourhood covers 4 times less ground at each step down. A fourth variant scales the
+per-neighbourhood costs and the number of decisions to the smaller neighbourhoods, to see whether
+that brings the 900-neighbourhood results back. Compare shares (`held`, `top_share`,
+`hotspot_spread`, `*_share`), not counts.
+"""
+game = "../games/gangland"
+days = 730
+seeds = 10
+report = ["places", "held", "top_share", "hhi", "gangs_alive", "hotspot_spread", "contested_share", "captures_share", "violence", "m.Sales", "m.Extortion"]
+
+[[variant]]
+name = "225"
+set = { neighborhoods = 225 }
+
+[[variant]]
+name = "900"
+set = { neighborhoods = 900 }
+
+[[variant]]
+name = "3600"
+set = { neighborhoods = 3600 }
+
+[[variant]]
+name = "3600 scaled"
+description = "a quarter of the cost per neighbourhood, four times the decisions"
+set = { neighborhoods = 3600, expand_crew = 0.75, attack_crew = 1.5, gang_actions = 12, police_actions = 16, patrol_cost = 2.5, raid_cost = 25 }

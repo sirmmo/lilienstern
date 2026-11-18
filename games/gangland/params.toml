@@ -1,0 +1,62 @@
+# Gangland's numbers. Each one can be changed with `--set name=value` or in an experiment,
+# and is used as $name in game.toml and the scripts.
+
+# The city
+neighborhoods = 900       # about how many neighbourhoods
+radius_km = 10
+city_seed = -1            # -1: a new city for every seed; a number: the same city every time
+
+# Gangs
+gangs = 6
+gang_cash = 120
+gang_presence = 40        # presence at the headquarters at the start (60% around it)
+hq_max_wealth = 40        # headquarters only in neighbourhoods this poor or poorer
+
+# What gang decisions cost and do
+gang_actions = 3          # decisions per day
+expand_crew = 3           # crew it takes to move into a neighbourhood
+expand_presence = 18
+reinforce_presence = 12
+attack_crew = 6
+attack_damage = 25
+corner_cost = 40
+racket_cost = 60
+lab_cost = 120
+safehouse_cost = 50
+bribe_cost = 30
+hire_cost = 40            # cash for hired muscle...
+hire_crew = 4             # ...and the crew it brings
+aggression = 4            # how much gangs want to attack
+
+# Economy
+corner_take = 5           # cash a corner makes on a day it has product
+racket_take = 3           # cash a racket makes on a day
+lab_output = 12           # product a lab makes on a day
+recruit_wealth = 45       # safehouses recruit only where wealth is at most this
+crew_per_day = 0.6        # crew a safehouse recruits on a day
+
+# Police
+police_budget = 40        # per day
+police_actions = 4        # decisions per day
+patrol_cost = 10
+patrol_strength = 30
+raid_cost = 100
+raid_heat = 45            # raids only where heat is above this
+police_w_flat = 1.0       # what patrols go after: anywhere...
+police_w_violence = 1.0   # ...violence...
+police_w_heat = 0.3       # ...gang activity...
+police_w_wealth = 0.0     # ...rich neighbourhoods
+police_noise = 0.3        # randomness of police choices
+
+# Control of neighbourhoods
+hold = 20
+contest = 8
+attrition = 0.04
+presence_decay = 0.01
+police_attrition = 0.3
+
+# Shocks used by experiments
+shock_day = -1            # day of the economic shock (-1: none)
+shock_factor = 0.6        # wealth kept by the eastern half of the city
+decap_day = -1            # day the largest gang's leadership is arrested (-1: never)
+decap_factor = 0.4        # presence it keeps in its turf

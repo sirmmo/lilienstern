@@ -1,0 +1,121 @@
+name = "Gangland"
+description = "Gangs fight over the neighbourhoods of a large city: they deal, extort and recruit, and the police patrols and raids."
+scripts = ["economy.gbx", "politics.lil"]
+days = 730
+sample_every = 10
+
+[city]
+neighborhoods = $neighborhoods
+radius_km = $radius_km
+river = true
+bridges = 5
+enclaves = 2
+city_seed = $city_seed
+
+# Values per neighbourhood. `init` is a field of the city (wealth, density, population,
+# centrality, x, y, area_km2, or a GeoJSON property), or a number.
+[[map]]
+id = "Wealth"
+init = "wealth"
+max = 100
+
+[[map]]
+id = "Density"
+init = "density"
+
+[[map]]
+id = "X"
+init = "x"
+min = -1
+
+[[map]]
+id = "Heat"           # how much the police notices gang activity
+decay = 0.05
+diffuse = 0.05
+max = 100
+
+[[map]]
+id = "Police"
+decay = 0.1
+diffuse = 0.1
+max = 100
+
+[[map]]
+id = "Violence"
+decay = 0.1
+diffuse = 0.05
+max = 100
+
+[[map]]
+id = "Traffic"        # product carried through the neighbourhood
+decay = 0.5
+
+[[resource]]
+id = "Cash"
+scope = "global"
+
+[[resource]]
+id = "Crew"
+scope = "global"
+
+[[resource]]
+id = "Budget"
+scope = "global"
+
+[[resource]]
+id = "Product"
+scope = "agent"
+reach = 6
+private = true        # a gang's labs supply only its own corners
+
+[[unit]]
+id = "safehouse"
+name = "Safehouse"
+
+[[unit]]
+id = "corner"
+name = "Street corner"
+
+[[unit]]
+id = "racket"
+name = "Protection racket"
+
+[[unit]]
+id = "lab"
+name = "Lab"
+
+[[faction]]
+id = "gang"
+kind = "gang"
+count = $gangs
+name = "Gang"
+names = ["Vipers", "Saints", "Crows", "Lions", "Jackals", "Wolves", "Hornets", "Sharks", "Cobras", "Ravens", "Bulls", "Foxes", "Kings", "Hawks", "Spiders", "Ghosts"]
+start = { Cash = $gang_cash, Crew = 6 }
+start_units = ["safehouse", "corner", "lab"]
+start_presence = $gang_presence
+start_radius = 1
+hq_field = "wealth"
+hq_max = $hq_max_wealth
+actions = $gang_actions
+noise = 0.25
+
+[[faction]]
+id = "police"
+kind = "police"
+name = "Police"
+colors = ["#1f3a93"]
+income = { Budget = $police_budget }
+actions = $police_actions
+noise = $police_noise
+
+[control]
+hold = $hold
+margin = 1.3
+decay = $presence_decay
+contest = $contest
+attrition = $attrition
+violence = 0.5
+police_map = "Police"
+police_attrition = $police_attrition
+on_capture = "seize"
+hotspot = 5

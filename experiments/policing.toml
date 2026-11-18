@@ -1,0 +1,35 @@
+name = "Policing strategies"
+question = "Where should a fixed police budget go: anywhere, where the violence is, or where the money is? Does hot-spot policing lower violence, or push it next door?"
+description = """
+The same police budget (four patrols a day, raids when it can afford them) is spent in four ways,
+plus no police at all and a doubled hot-spot budget. `hotspot_places` counts the neighbourhoods
+that were violent at some point: if patrols only displace violence, it goes up while the daily
+`hotspots` stay level.
+"""
+game = "../games/gangland"
+days = 730
+seeds = 12
+report = ["violence", "hotspots", "hotspot_places", "captures", "held", "top_share", "gangs_alive", "m.Raids", "m.Arrests", "m.Bribes", "m.Sales", "map.Police"]
+
+[[variant]]
+name = "no police"
+set = { police_budget = 0 }
+
+[[variant]]
+name = "random patrols"
+description = "anywhere, at random"
+set = { police_w_flat = 1.0, police_w_violence = 0.0, police_w_heat = 0.0, police_noise = 1.0 }
+
+[[variant]]
+name = "hot spots"
+description = "where violence and gang activity are (the game's default)"
+
+[[variant]]
+name = "rich districts"
+description = "where the wealth is"
+set = { police_w_flat = 0.2, police_w_violence = 0.0, police_w_heat = 0.0, police_w_wealth = 1.0 }
+
+[[variant]]
+name = "hot spots x2"
+description = "twice the budget"
+set = { police_budget = 80, police_actions = 8 }
