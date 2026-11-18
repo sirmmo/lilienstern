@@ -21,7 +21,8 @@
 //! ```
 //!
 //! Writes `summary.csv` (one row per run), `report.md` (mean and spread per variant),
-//! `series/<variant>/seed-N.csv` and, for the first seed of each variant, `maps/<variant>.geojson`.
+//! `series/<variant>/seed-N.csv` and, for the first seed of each variant, a map viewer in
+//! `maps/<variant>/` (`index.html`, `style.json`, `map.geojson`).
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -31,7 +32,6 @@ use std::sync::Mutex;
 use serde::Deserialize;
 
 use crate::game::Game;
-use crate::geojson::to_geojson;
 use crate::params::Params;
 use crate::world::{fmt_num, Series, World};
 
@@ -94,7 +94,8 @@ pub struct RunResult {
     pub seed: u64,
     pub summary: BTreeMap<String, f64>,
     pub series: Series,
-    pub geojson: Option<String>,
+    /// The viewer's files (name, content), for the first seed.
+    pub viewer: Option<Vec<(String, String)>>,
 }
 
 pub struct Outcome {
@@ -163,14 +164,32 @@ pub fn run(path: &Path, opts: &Options) -> Result<Outcome, String> {
                 let seed = def.seed_base + s;
                 match World::new(&games[v], seed) {
                     Ok(mut w) => {
+                        let map = def.geojson && s == 0;
+                        if map {
+                            w.keep_history();
+                        }
                         w.run(days);
-                        let geojson = (def.geojson && s == 0).then(|| to_geojson(&w).to_string());
+                        let viewer = if map {
+                            match crate::viewer::files(&w) {
+                                Ok(f) => Some(f),
+                                Err(e) => {
+                                    let name = &def.variants[v].name;
+                                    errors
+                                        .lock()
+                                        .expect("errors")
+                                        .push(format!("{name} seed {seed}: map: {e}"));
+                                    None
+                                }
+                            }
+                        } else {
+                            None
+                        };
                         let r = RunResult {
                             variant: v,
                             seed,
                             summary: w.summary(),
                             series: w.series.clone(),
-                            geojson,
+                            viewer,
                         };
                         results.lock().expect("results")[j] = Some(r);
                     }
@@ -349,14 +368,9 @@ fn write(dir: &Path, def: &ExperimentDef, runs: &[RunResult], report: &str) -> R
         let vdir = dir.join("series").join(slug(&def.variants[r.variant].name));
         std::fs::create_dir_all(&vdir).map_err(io)?;
         std::fs::write(vdir.join(format!("seed-{}.csv", r.seed)), r.series.to_csv()).map_err(io)?;
-        if let Some(g) = &r.geojson {
-            std::fs::create_dir_all(dir.join("maps")).map_err(io)?;
-            std::fs::write(
-                dir.join("maps")
-                    .join(format!("{}.geojson", slug(&def.variants[r.variant].name))),
-                g,
-            )
-            .map_err(io)?;
+        if let Some(files) = &r.viewer {
+            let mdir = dir.join("maps").join(slug(&def.variants[r.variant].name));
+            crate::viewer::write_files(&mdir, files)?;
         }
     }
     Ok(())

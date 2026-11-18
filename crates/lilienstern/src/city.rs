@@ -4,11 +4,15 @@
 //! bridges, a rich centre, rich enclaves and poor outskirts) or imported from GeoJSON polygons,
 //! where polygons sharing a border are neighbours.
 //!
+//! A MapLibre style (`"version": 8`) can stand for the GeoJSON: its GeoJSON source holds the
+//! places, and the style becomes the map drawn under the game.
+//!
 //! Generated fields are sampled from continuous fields of the city, not of its cells: the same
 //! city cut into 150 or 2400 neighbourhoods has the same wealth and density at each point.
 //! That is what makes granularity experiments possible.
 
 use std::collections::{BTreeMap, HashMap};
+use std::path::Path;
 
 use serde::Deserialize;
 
@@ -61,6 +65,29 @@ pub struct CityDef {
     /// Imported places: the property holding the name.
     #[serde(default)]
     pub name_property: Option<String>,
+    /// When `geojson` is a MapLibre style: the GeoJSON source with the places (default: the
+    /// first GeoJSON source).
+    #[serde(default)]
+    pub source: Option<String>,
+    /// Imported places: fields taken from other properties, as `field = "property"`.
+    #[serde(default)]
+    pub fields: BTreeMap<String, String>,
+    /// Imported places without `wealth`, `density` or `population` get them from the same
+    /// continuous fields as a generated city.
+    #[serde(default = "d_true")]
+    pub synthesize: bool,
+    /// What the viewer draws under the game: "none", "osm" (OpenStreetMap tiles), or a MapLibre
+    /// style (a URL, or a file relative to the game). Default: an imported MapLibre style
+    /// itself, else "osm" for an imported map and "none" for a generated one.
+    #[serde(default)]
+    pub basemap: Option<String>,
+}
+
+impl CityDef {
+    /// The file to import, if any (an empty string means none, so it can be a parameter).
+    pub fn import_file(&self) -> Option<&str> {
+        self.geojson.as_deref().filter(|s| !s.trim().is_empty())
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -84,6 +111,14 @@ pub struct City {
     pub neighbours: Vec<Vec<usize>>,
     /// [lon, lat] of (0, 0).
     pub origin: [f64; 2],
+    /// The MapLibre style the places came from (its GeoJSON sources inlined), if any.
+    pub style: Option<serde_json::Value>,
+    /// The style's source with the places.
+    pub style_source: Option<String>,
+    /// Whether the places were imported (and so have a place on Earth).
+    pub imported: bool,
+    /// Credit for imported data (a GeoJSON's top-level `attribution`).
+    pub attribution: Option<String>,
 }
 
 const M_PER_DEG_LAT: f64 = 110_540.0;
@@ -196,6 +231,33 @@ fn name(rng: &mut Rng) -> String {
     format!("{}{}", PREFIXES[rng.below(PREFIXES.len())], root)
 }
 
+fn enclaves(seed: u64, n: u32, radius: f64) -> Vec<[f64; 2]> {
+    let mut rng = Rng::new(seed ^ 0xC17E);
+    (0..n)
+        .map(|_| {
+            [
+                (rng.f64() * 2.0 - 1.0) * 0.6 * radius,
+                (rng.f64() * 2.0 - 1.0) * 0.6 * radius,
+            ]
+        })
+        .collect()
+}
+
+/// Wealth (2 to 100) and density (people per km²) at a point of a city of this radius: richer
+/// and denser towards the centre and around the enclaves, with noise.
+fn synthetic(x: f64, y: f64, radius: f64, seed: u64, enclaves: &[[f64; 2]]) -> (f64, f64) {
+    let c = (1.0 - (x * x + y * y).sqrt() / radius).max(0.0);
+    let mut wealth = 12.0 + 50.0 * c * c + (fbm(seed, x / 3000.0, y / 3000.0) - 0.5) * 45.0;
+    for e in enclaves {
+        let dd = ((x - e[0]).powi(2) + (y - e[1]).powi(2)).sqrt() / (0.1 * radius);
+        wealth += 40.0 / (1.0 + dd * dd);
+    }
+    let density =
+        (3000.0 + 15000.0 * c + (fbm(seed ^ 0xD3, x / 2500.0, y / 2500.0) - 0.5) * 9000.0)
+            .max(500.0);
+    (wealth.clamp(2.0, 100.0), density)
+}
+
 /// Generates a round city of about `def.neighborhoods` hexagonal neighbourhoods.
 pub fn generate(def: &CityDef, seed: u64) -> City {
     let seed = if def.city_seed >= 0 {
@@ -209,15 +271,7 @@ pub fn generate(def: &CityDef, seed: u64) -> City {
     let cell_area = std::f64::consts::PI * radius * radius / n;
     let s = (2.0 * cell_area / (3.0 * sq3)).sqrt(); // centre to corner
     let width = s * sq3;
-    let mut rng = Rng::new(seed ^ 0xC17E);
-    let enclaves: Vec<[f64; 2]> = (0..def.enclaves)
-        .map(|_| {
-            [
-                (rng.f64() * 2.0 - 1.0) * 0.6 * radius,
-                (rng.f64() * 2.0 - 1.0) * 0.6 * radius,
-            ]
-        })
-        .collect();
+    let enclaves = enclaves(seed, def.enclaves, radius);
     let river_y = |x: f64| {
         let u = x / radius;
         radius * (0.1 + 0.15 * u - 0.3 * u * u)
@@ -254,20 +308,13 @@ pub fn generate(def: &CityDef, seed: u64) -> City {
                 continue;
             }
             let c = 1.0 - d / radius;
-            let mut wealth = 12.0 + 50.0 * c * c + (fbm(seed, x / 3000.0, y / 3000.0) - 0.5) * 45.0;
-            for e in &enclaves {
-                let dd = ((x - e[0]).powi(2) + (y - e[1]).powi(2)).sqrt() / (0.1 * radius);
-                wealth += 40.0 / (1.0 + dd * dd);
-            }
-            let density =
-                (3000.0 + 15000.0 * c + (fbm(seed ^ 0xD3, x / 2500.0, y / 2500.0) - 0.5) * 9000.0)
-                    .max(500.0);
+            let (wealth, density) = synthetic(x, y, radius, seed, &enclaves);
             let area_km2 = 1.5 * sq3 * s * s / 1e6;
             let fields = BTreeMap::from([
                 ("x".to_string(), x / radius),
                 ("y".to_string(), y / radius),
                 ("centrality".to_string(), c),
-                ("wealth".to_string(), wealth.clamp(2.0, 100.0)),
+                ("wealth".to_string(), wealth),
                 ("density".to_string(), density),
                 ("population".to_string(), density * area_km2),
                 ("area_km2".to_string(), area_km2),
@@ -302,6 +349,10 @@ pub fn generate(def: &CityDef, seed: u64) -> City {
         places,
         neighbours,
         origin: def.origin.unwrap_or([0.0, 0.0]),
+        style: None,
+        style_source: None,
+        imported: false,
+        attribution: None,
     };
     city.keep_largest_component();
     for (i, p) in city.places.iter_mut().enumerate() {
@@ -355,11 +406,68 @@ fn outer_rings(geom: &serde_json::Value) -> Vec<Vec<[f64; 2]>> {
     }
 }
 
-/// Imports places from a GeoJSON FeatureCollection of polygons. Polygons sharing at least two
-/// vertices are neighbours; a place sharing none is joined to its two nearest places.
+fn is_style(json: &serde_json::Value) -> bool {
+    json.get("version").is_some() && json["sources"].is_object()
+}
+
+/// Loads places from a GeoJSON file or a MapLibre style file. In a style, GeoJSON sources whose
+/// `data` is a file name are read relative to the style and inlined; sources on the web are
+/// left as they are, except the one with the places, which must be local or inline.
+pub fn load(path: &Path, def: &CityDef, seed: u64) -> Result<City, String> {
+    let read = |p: &Path| std::fs::read_to_string(p).map_err(|e| format!("{}: {e}", p.display()));
+    let json: serde_json::Value = serde_json::from_str(&read(path)?)
+        .map_err(|e| format!("{}: not JSON: {e}", path.display()))?;
+    if !is_style(&json) {
+        return from_value(&json, def, seed).map_err(|e| format!("{}: {e}", path.display()));
+    }
+    let mut style = json;
+    let dir = path.parent().unwrap_or(Path::new("."));
+    let sources = style["sources"].as_object_mut().expect("checked");
+    for src in sources.values_mut() {
+        if src["type"] == "geojson" {
+            if let Some(file) = src["data"].as_str().filter(|f| !f.contains("://")) {
+                let text = read(&dir.join(file))?;
+                src["data"] =
+                    serde_json::from_str(&text).map_err(|e| format!("{file}: not JSON: {e}"))?;
+            }
+        }
+    }
+    let name = match &def.source {
+        Some(n) => n.clone(),
+        None => sources
+            .iter()
+            .find(|(_, s)| s["type"] == "geojson")
+            .map(|(k, _)| k.clone())
+            .ok_or_else(|| format!("{}: the style has no GeoJSON source", path.display()))?,
+    };
+    let data = sources
+        .get(&name)
+        .filter(|s| s["type"] == "geojson")
+        .map(|s| s["data"].clone())
+        .ok_or_else(|| format!("{}: no GeoJSON source {name:?}", path.display()))?;
+    if data.is_string() {
+        return Err(format!(
+            "{}: source {name:?} is on the web ({}); download it and give its file name",
+            path.display(),
+            data.as_str().unwrap_or_default()
+        ));
+    }
+    let mut city = from_value(&data, def, seed).map_err(|e| format!("{}: {e}", path.display()))?;
+    city.style = Some(style);
+    city.style_source = Some(name);
+    Ok(city)
+}
+
+/// Imports places from GeoJSON text (see [`from_value`]).
 pub fn from_geojson(text: &str, def: &CityDef) -> Result<City, String> {
     let json: serde_json::Value =
         serde_json::from_str(text).map_err(|e| format!("not JSON: {e}"))?;
+    from_value(&json, def, 0)
+}
+
+/// Imports places from a GeoJSON FeatureCollection of polygons. Polygons sharing at least two
+/// vertices are neighbours; a place sharing none is joined to its two nearest places.
+pub fn from_value(json: &serde_json::Value, def: &CityDef, seed: u64) -> Result<City, String> {
     let features = json["features"]
         .as_array()
         .ok_or("not a GeoJSON FeatureCollection")?;
@@ -423,6 +531,18 @@ pub fn from_geojson(text: &str, def: &CityDef) -> Result<City, String> {
             }
         }
         fields.insert("area_km2".into(), total_area.max(area) / 1e6);
+        for (field, property) in &def.fields {
+            match props.and_then(|p| p.get(property)).and_then(|v| v.as_f64()) {
+                Some(x) => {
+                    fields.insert(field.clone(), x);
+                }
+                None => {
+                    return Err(format!(
+                        "feature {i}: no numeric property {property:?} for field {field:?}"
+                    ))
+                }
+            }
+        }
         let prop = |k: &str| {
             props.and_then(|p| p.get(k)).and_then(|v| {
                 v.as_str()
@@ -445,15 +565,31 @@ pub fn from_geojson(text: &str, def: &CityDef) -> Result<City, String> {
         .iter()
         .map(|p| (p.centre[0].powi(2) + p.centre[1].powi(2)).sqrt())
         .fold(1.0f64, f64::max);
+    let enclaves = enclaves(seed, def.enclaves, far);
     for p in &mut places {
         let d = (p.centre[0].powi(2) + p.centre[1].powi(2)).sqrt();
         p.fields.insert("x".into(), p.centre[0] / far);
         p.fields.insert("y".into(), p.centre[1] / far);
         p.fields.insert("centrality".into(), 1.0 - d / far);
-        if let (Some(&pop), false) = (p.fields.get("population"), p.fields.contains_key("density"))
-        {
-            let a = p.fields["area_km2"].max(1e-6);
-            p.fields.insert("density".into(), pop / a);
+        let area = p.fields["area_km2"].max(1e-6);
+        if def.synthesize {
+            let (wealth, density) = synthetic(p.centre[0], p.centre[1], far, seed, &enclaves);
+            p.fields.entry("wealth".into()).or_insert(wealth);
+            if !p.fields.contains_key("density") && !p.fields.contains_key("population") {
+                p.fields.insert("density".into(), density);
+            }
+        }
+        match (
+            p.fields.get("population").copied(),
+            p.fields.get("density").copied(),
+        ) {
+            (Some(pop), None) => {
+                p.fields.insert("density".into(), pop / area);
+            }
+            (None, Some(den)) => {
+                p.fields.insert("population".into(), den * area);
+            }
+            _ => {}
         }
     }
     // Shared vertices, rounded to about 10 cm.
@@ -491,6 +627,10 @@ pub fn from_geojson(text: &str, def: &CityDef) -> Result<City, String> {
         places,
         neighbours,
         origin,
+        style: None,
+        style_source: None,
+        imported: true,
+        attribution: json["attribution"].as_str().map(str::to_string),
     };
     for i in 0..city.len() {
         if city.neighbours[i].is_empty() {
@@ -590,5 +730,48 @@ mod tests {
             (ll[0] - 11.005).abs() < 1e-3 && (ll[1] - 44.005).abs() < 1e-3,
             "{ll:?}"
         );
+    }
+
+    #[test]
+    fn imports_a_maplibre_style_and_fills_in_missing_fields() {
+        let dir = std::env::temp_dir().join(format!("lilienstern-style-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let sq = |x: f64, y: f64| {
+            format!(
+                r#"{{"type":"Feature","properties":{{"pop":{}}},"geometry":{{"type":"Polygon","coordinates":[[[{x},{y}],[{},{y}],[{},{}],[{x},{}],[{x},{y}]]]}}}}"#,
+                x * 100.0,
+                x + 0.01,
+                x + 0.01,
+                y + 0.01,
+                y + 0.01
+            )
+        };
+        let gj = format!(
+            r#"{{"type":"FeatureCollection","features":[{},{},{}]}}"#,
+            sq(11.0, 44.0),
+            sq(11.01, 44.0),
+            sq(11.02, 44.0)
+        );
+        std::fs::write(dir.join("blocks.geojson"), gj).unwrap();
+        let style = r#"{"version":8,"sources":{"tiles":{"type":"raster","tiles":["https://x/{z}/{x}/{y}.png"]},"blocks":{"type":"geojson","data":"blocks.geojson"}},"layers":[]}"#;
+        std::fs::write(dir.join("map.json"), style).unwrap();
+        let mut d = def(1);
+        d.fields.insert("population".into(), "pop".into());
+        let c = load(&dir.join("map.json"), &d, 4).unwrap();
+        assert_eq!(c.len(), 3);
+        assert_eq!(c.style_source.as_deref(), Some("blocks"));
+        assert!(
+            c.style.as_ref().unwrap()["sources"]["blocks"]["data"]["features"].is_array(),
+            "inlined"
+        );
+        for p in &c.places {
+            assert!((2.0..=100.0).contains(&p.fields["wealth"]), "made up");
+            assert!(p.fields["population"] > 1000.0 && p.fields["density"] > 0.0);
+        }
+        d.source = Some("nope".into());
+        assert!(load(&dir.join("map.json"), &d, 4)
+            .unwrap_err()
+            .contains("nope"));
+        std::fs::remove_dir_all(dir).ok();
     }
 }

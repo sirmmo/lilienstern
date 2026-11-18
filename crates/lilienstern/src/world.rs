@@ -66,6 +66,18 @@ impl Sums {
     }
 }
 
+/// The state of the map on a day, for replaying a game.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Frame {
+    pub day: u32,
+    /// Holder of each place (faction index), -1 for nobody.
+    pub owner: Vec<i32>,
+    /// `maps[map][place]`, to one decimal.
+    pub maps: Vec<Vec<f32>>,
+    /// Places held by each faction.
+    pub territory: Vec<usize>,
+}
+
 /// A table of numbers by day.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Series {
@@ -121,6 +133,8 @@ pub struct World<'g> {
     /// Places that have been hotspots at some point.
     pub ever_hot: Vec<bool>,
     pub series: Series,
+    /// Snapshots for replaying the game, when kept (see [`World::keep_history`]).
+    pub history: Option<Vec<Frame>>,
     logs: Vec<f64>,
     today: Sums,
     period: Sums,
@@ -131,13 +145,8 @@ pub struct World<'g> {
 
 impl<'g> World<'g> {
     pub fn new(game: &'g Game, seed: u64) -> Result<World<'g>, String> {
-        let city = match &game.city.geojson {
-            Some(f) => {
-                let path = game.dir.join(f);
-                let text = std::fs::read_to_string(&path)
-                    .map_err(|e| format!("{}: {e}", path.display()))?;
-                city::from_geojson(&text, &game.city)?
-            }
+        let city = match game.city.import_file() {
+            Some(f) => city::load(&game.dir.join(f), &game.city, seed)?,
             None => city::generate(&game.city, seed),
         };
         Ok(World::with_city(game, seed, city))
@@ -190,6 +199,7 @@ impl<'g> World<'g> {
             saving: vec![0; nf],
             ever_hot: vec![false; n],
             series: Series::default(),
+            history: None,
             logs: vec![0.0; rules.metrics.len()],
             today: Sums::default(),
             period: Sums::default(),
@@ -966,6 +976,42 @@ impl<'g> World<'g> {
             let row = self.row();
             self.series.rows.push(row);
             self.period = Sums::default();
+            if self.history.is_some() {
+                let f = self.frame();
+                if let Some(h) = &mut self.history {
+                    h.push(f);
+                }
+            }
+        }
+    }
+
+    /// Keeps a snapshot of owners and maps every time a row of the series is recorded, for
+    /// replaying the game in the viewer.
+    pub fn keep_history(&mut self) {
+        if self.history.is_none() {
+            self.history = Some(vec![self.frame()]);
+        }
+    }
+
+    fn frame(&self) -> Frame {
+        Frame {
+            day: self.day,
+            owner: self
+                .owner
+                .iter()
+                .map(|o| o.map_or(-1, |f| f as i32))
+                .collect(),
+            maps: self
+                .gb
+                .maps
+                .iter()
+                .map(|m| {
+                    m.iter()
+                        .map(|&v| (v * 10.0).round() as f32 / 10.0)
+                        .collect()
+                })
+                .collect(),
+            territory: self.factions.iter().map(|f| f.territory).collect(),
         }
     }
 

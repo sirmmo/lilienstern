@@ -1,0 +1,26 @@
+name = "Policing in Bologna"
+question = "Do the policing results hold on a real city cut into 2,606 census sections?"
+description = """
+Gangland on Bologna's 2021 census sections, with each section's wealth from the median income of
+its statistical area and its residents estimated from its area's (see `games/gangland/maps`).
+Gangs start in the poorer sections. Open `maps/<variant>/index.html` to replay a game over
+OpenStreetMap.
+"""
+game = "../games/gangland"
+days = 730
+seeds = 8
+report = ["violence", "hotspots", "hotspot_places", "captures", "held", "top_share", "m.Raids", "m.Sales", "map.Police"]
+
+[set]
+city_file = "maps/bologna-sections.geojson"
+
+[[variant]]
+name = "no police"
+set = { police_budget = 0 }
+
+[[variant]]
+name = "hot spots"
+
+[[variant]]
+name = "rich districts"
+set = { police_w_flat = 0.2, police_w_violence = 0.0, police_w_heat = 0.0, police_w_wealth = 1.0 }

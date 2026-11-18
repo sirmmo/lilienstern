@@ -5,6 +5,8 @@
 neighborhoods = 900       # about how many neighbourhoods
 radius_km = 10
 city_seed = -1            # -1: a new city for every seed; a number: the same city every time
+city_file = ""            # a real map instead: a GeoJSON or a MapLibre style, e.g. "maps/bologna-sections.geojson"
+basemap = ""              # under the map viewer: "none", "osm", a style URL or file ("": automatic)
 
 # Gangs
 gangs = 6

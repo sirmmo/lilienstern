@@ -19,6 +19,7 @@ pub mod geojson;
 pub mod params;
 pub mod rng;
 pub mod script;
+pub mod viewer;
 pub mod world;
 
 pub use game::Game;

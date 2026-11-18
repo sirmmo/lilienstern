@@ -120,8 +120,40 @@ fn an_experiment_writes_its_report() {
     assert!(o.report.contains("| `violence` |"));
     assert!(
         out.join("summary.csv").exists()
-            && out.join("maps/partial.geojson").exists()
+            && out.join("maps/partial/index.html").exists()
             && out.join("series/total/seed-1.csv").exists()
     );
     std::fs::remove_dir_all(out).ok();
+}
+
+#[test]
+fn plays_on_a_real_map_and_writes_a_viewer() {
+    let g = small(&[("city_file", "maps/bologna.style.json"), ("gangs", "3")]);
+    let mut w = World::new(&g, 2).unwrap();
+    assert_eq!(w.city.len(), 90);
+    assert!(w.city.imported && w.city.style.is_some());
+    w.keep_history();
+    w.run(30);
+    assert_eq!(w.history.as_ref().unwrap().len(), 5); // days 0, 1, 10, 20, 30
+    let files = lilienstern::viewer::files(&w).unwrap();
+    let html = &files.iter().find(|f| f.0 == "index.html").unwrap().1;
+    assert!(
+        html.contains("maplibre-gl")
+            && html.contains("San Luca")
+            && !html.contains("</script>\n<script>\n</script>")
+    );
+    let style: serde_json::Value =
+        serde_json::from_str(&files.iter().find(|f| f.0 == "style.json").unwrap().1).unwrap();
+    assert_eq!(style["sources"]["lilienstern"]["data"], "map.geojson");
+    assert!(
+        style["sources"]["osm"].is_object(),
+        "the imported style is the basemap"
+    );
+    let ids: Vec<&str> = style["layers"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|l| l["id"].as_str().unwrap())
+        .collect();
+    assert_eq!(ids.last(), Some(&"lilienstern-line"));
 }

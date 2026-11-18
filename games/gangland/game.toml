@@ -11,6 +11,8 @@ river = true
 bridges = 5
 enclaves = 2
 city_seed = $city_seed
+geojson = "$city_file"
+basemap = "$basemap"
 
 # Values per neighbourhood. `init` is a field of the city (wealth, density, population,
 # centrality, x, y, area_km2, or a GeoJSON property), or a number.

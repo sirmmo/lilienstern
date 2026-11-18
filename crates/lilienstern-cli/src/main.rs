@@ -5,6 +5,7 @@ use std::process::ExitCode;
 
 use lilienstern::experiment::{self, Options};
 use lilienstern::geojson::to_geojson;
+use lilienstern::viewer;
 use lilienstern::{Game, Params, World};
 
 const USAGE: &str = "\
@@ -13,14 +14,17 @@ lilienstern: a configurable grand-strategy simulation engine
 USAGE:
     lilienstern check <game-dir> [--set key=value]...
     lilienstern run <game-dir> [--seed N] [--days N] [--set key=value]...
-                    [--csv FILE] [--geojson FILE] [--quiet]
+                    [--csv FILE] [--geojson FILE] [--map DIR] [--quiet]
     lilienstern experiment <file.toml> [--out DIR] [--threads N] [--seeds N] [--days N]
-    lilienstern city <game-dir> [--seed N] [--set key=value]... --geojson FILE
+    lilienstern city <game-dir> [--seed N] [--set key=value]... [--geojson FILE] [--map DIR]
 
 check       loads a game and lists what it declares
 run         plays one game and prints how it went
 experiment  plays every variant of an experiment over its seeds and writes a report
 city        writes the game's map, before anything happens
+
+--map DIR writes a map viewer: DIR/index.html (open it in a browser to replay the game over
+the basemap), DIR/style.json (a MapLibre style) and DIR/map.geojson.
 ";
 
 struct Args {
@@ -32,6 +36,7 @@ struct Args {
     threads: Option<usize>,
     csv: Option<PathBuf>,
     geojson: Option<PathBuf>,
+    map: Option<PathBuf>,
     out: Option<PathBuf>,
     quiet: bool,
 }
@@ -46,6 +51,7 @@ fn parse(argv: &[String]) -> Result<Args, String> {
         threads: None,
         csv: None,
         geojson: None,
+        map: None,
         out: None,
         quiet: false,
     };
@@ -80,6 +86,7 @@ fn parse(argv: &[String]) -> Result<Args, String> {
             "--csv" => a.csv = Some(val("--csv")?.into()),
             "--geojson" => a.geojson = Some(val("--geojson")?.into()),
             "--out" => a.out = Some(val("--out")?.into()),
+            "--map" => a.map = Some(val("--map")?.into()),
             "--quiet" | "-q" => a.quiet = true,
             "--help" | "-h" => return Err(String::new()),
             s if s.starts_with('-') => return Err(format!("unknown option {s}")),
@@ -154,15 +161,27 @@ fn command(a: &Args) -> Result<(), String> {
         }
         "city" => {
             let g = game(a)?;
-            let w = World::new(&g, a.seed)?;
-            let path = a.geojson.as_ref().ok_or("--geojson FILE is needed")?;
-            write(path, &to_geojson(&w).to_string())?;
-            println!("{} places written to {}", w.city.len(), path.display());
+            let mut w = World::new(&g, a.seed)?;
+            if a.geojson.is_none() && a.map.is_none() {
+                return Err("give --geojson FILE or --map DIR".into());
+            }
+            if let Some(path) = &a.geojson {
+                write(path, &to_geojson(&w).to_string())?;
+                println!("{} places written to {}", w.city.len(), path.display());
+            }
+            if let Some(dir) = &a.map {
+                w.keep_history();
+                viewer::write(dir, &w)?;
+                println!("map viewer written to {}", dir.join("index.html").display());
+            }
             Ok(())
         }
         "run" => {
             let g = game(a)?;
             let mut w = World::new(&g, a.seed)?;
+            if a.map.is_some() {
+                w.keep_history();
+            }
             let days = a.days.unwrap_or(g.days);
             let step = (days / 10).max(1);
             if !a.quiet {
@@ -213,6 +232,10 @@ fn command(a: &Args) -> Result<(), String> {
             if let Some(p) = &a.geojson {
                 write(p, &to_geojson(&w).to_string())?;
                 println!("map written to {}", p.display());
+            }
+            if let Some(dir) = &a.map {
+                viewer::write(dir, &w)?;
+                println!("map viewer written to {}", dir.join("index.html").display());
             }
             Ok(())
         }
