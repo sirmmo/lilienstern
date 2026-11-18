@@ -33,7 +33,8 @@ It writes to `out/<experiment>/`:
 * `report.md`: the variants and a table of mean ± standard deviation over seeds;
 * `summary.csv`: one row per run, every summary value;
 * `series/<variant>/seed-N.csv`: each run's time series;
-* `maps/<variant>.geojson`: the city at the end of the first seed.
+* `maps/<variant>/`: a viewer for the first seed (`index.html` replays it over the basemap,
+  `style.json`, `map.geojson`).
 
 Variants with the same parameters and seeds give the same numbers: in the results below, the
 "hot spots" variant of the policing experiment, the "no shock" variant and the "no arrests"
@@ -132,12 +133,29 @@ unit problem in an agent model, and the reason to state the spatial unit with an
 a real city, the import from GeoJSON makes the unit the city's own (statistical areas,
 neighbourhoods, blocks).
 
+### Policing in Bologna (`experiments/bologna.toml`)
+
+The policing question on a real city: Bologna's 2,606 census sections, 8 seeds.
+
+| | no police | hot spots | rich districts |
+|---|---:|---:|---:|
+| `violence` | 3517 ± 830 | 1172 ± 474 | 3539 ± 870 |
+| `hotspot_places` | 263 ± 89 | 166 ± 44 | 259 ± 67 |
+| `captures` | 122 ± 39 | 39 ± 13 | 123 ± 36 |
+| `held` | 0.26 | 0.24 | 0.25 |
+| `m.Raids` | 0 | 107 ± 14 | 51 ± 10 |
+
+Hot-spot policing works even better here (violence down by two thirds), and guarding the rich
+districts does nothing: in Bologna the gangs start and fight in the poorer sections, far from
+the hill and the centre. With small sections and one section per move, gangs hold only a
+quarter of the city after two years.
+
 ## Ideas for more
 
 * **Poverty and recruitment**: make aggression grow with crew and see whether the shock result
   flips.
 * **Unequal gangs**: one rich gang in the centre, five poor ones on the edges.
-* **A real city**: import a city's statistical areas with population and income, and compare
-  hotspots with recorded data (the Extended GlassBox validation loop).
+* **Calibration**: compare Bologna's simulated hotspots with recorded data (the Extended
+  GlassBox validation loop).
 * **Police tactics over time**: switch strategy on a given day with an event, and look at the
   time series (`series/*/seed-N.csv`) around it.

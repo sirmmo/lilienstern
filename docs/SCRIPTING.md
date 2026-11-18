@@ -48,13 +48,19 @@ sample_every = 10        # days between rows of the time series
 | `enclaves` | 2 | rich districts away from the centre |
 | `city_seed` | -1 | -1: a new city for each run's seed; a number: always this city |
 | `origin` | [0, 0] | [lon, lat] of the centre, for GeoJSON |
-| `geojson` | | import places from this file instead of generating them |
+| `geojson` | | import places from this file instead of generating them: a GeoJSON, or a MapLibre style (`"version": 8`) with a GeoJSON source; empty means none |
+| `source` | | in a MapLibre style: the GeoJSON source with the places (default: the first) |
 | `name_property` | "name" | imported places: the property with the name |
+| `fields` | | imported places: fields from other properties, as `{ wealth = "income_index" }` |
+| `synthesize` | true | imported places missing `wealth`, `density` or `population` get them as a generated city would |
+| `basemap` | | what map viewers draw underneath: "none", "osm", a MapLibre style URL or file. Default: the imported style, else "osm" for imported places and "none" for a generated city |
 
 Generated places have the fields `x`, `y` (-1 to 1), `centrality`, `wealth` (0 to 100),
 `density` (people per km²), `population` and `area_km2`. Imported places have `x`, `y`,
 `centrality`, `area_km2` and their numeric properties (lowercased); `density` is derived from
-`population` if missing. Imported polygons that share at least two vertices are neighbours.
+`population` if missing. Imported polygons that share at least two vertices are neighbours. In a MapLibre style, GeoJSON
+sources given as file names are read relative to the style; the places' source must be a file
+or inline (download a source that is on the web).
 
 ### [[map]]
 
@@ -178,6 +184,7 @@ end
 
 ```text
 decision attack
+    label Attack the block    # what a player sees (default: the name)
     for gang                  # gang, police, other or any (default)
     target adjacent           # see below
     every 1                   # considered every n days
@@ -189,6 +196,8 @@ decision attack
     weight map Wealth 0.06
 end
 ```
+
+`label` is the name a player sees (by default the decision's name, with spaces).
 
 **Targets:** `none` (the faction itself), `owned`, `adjacent` (bordering its territory, not
 its own), `present` (where it has presence), `contested` (where it and a rival both have more

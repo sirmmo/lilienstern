@@ -414,47 +414,55 @@ fn is_style(json: &serde_json::Value) -> bool {
 /// `data` is a file name are read relative to the style and inlined; sources on the web are
 /// left as they are, except the one with the places, which must be local or inline.
 pub fn load(path: &Path, def: &CityDef, seed: u64) -> Result<City, String> {
-    let read = |p: &Path| std::fs::read_to_string(p).map_err(|e| format!("{}: {e}", p.display()));
-    let json: serde_json::Value = serde_json::from_str(&read(path)?)
-        .map_err(|e| format!("{}: not JSON: {e}", path.display()))?;
+    let read = |name: &str| std::fs::read_to_string(name).map_err(|e| format!("{name}: {e}"));
+    load_with(&path.to_string_lossy(), &read, def, seed)
+}
+
+/// [`load`], reading files with `read` (paths are `/` separated).
+pub fn load_with(
+    name: &str,
+    read: &dyn Fn(&str) -> Result<String, String>,
+    def: &CityDef,
+    seed: u64,
+) -> Result<City, String> {
+    let json: serde_json::Value =
+        serde_json::from_str(&read(name)?).map_err(|e| format!("{name}: not JSON: {e}"))?;
     if !is_style(&json) {
-        return from_value(&json, def, seed).map_err(|e| format!("{}: {e}", path.display()));
+        return from_value(&json, def, seed).map_err(|e| format!("{name}: {e}"));
     }
     let mut style = json;
-    let dir = path.parent().unwrap_or(Path::new("."));
     let sources = style["sources"].as_object_mut().expect("checked");
     for src in sources.values_mut() {
         if src["type"] == "geojson" {
             if let Some(file) = src["data"].as_str().filter(|f| !f.contains("://")) {
-                let text = read(&dir.join(file))?;
+                let text = read(&crate::game::sibling(name, file))?;
                 src["data"] =
                     serde_json::from_str(&text).map_err(|e| format!("{file}: not JSON: {e}"))?;
             }
         }
     }
-    let name = match &def.source {
+    let source = match &def.source {
         Some(n) => n.clone(),
         None => sources
             .iter()
             .find(|(_, s)| s["type"] == "geojson")
             .map(|(k, _)| k.clone())
-            .ok_or_else(|| format!("{}: the style has no GeoJSON source", path.display()))?,
+            .ok_or_else(|| format!("{name}: the style has no GeoJSON source"))?,
     };
     let data = sources
-        .get(&name)
+        .get(&source)
         .filter(|s| s["type"] == "geojson")
         .map(|s| s["data"].clone())
-        .ok_or_else(|| format!("{}: no GeoJSON source {name:?}", path.display()))?;
+        .ok_or_else(|| format!("{name}: no GeoJSON source {source:?}"))?;
     if data.is_string() {
         return Err(format!(
-            "{}: source {name:?} is on the web ({}); download it and give its file name",
-            path.display(),
+            "{name}: source {source:?} is on the web ({}); download it and give its file name",
             data.as_str().unwrap_or_default()
         ));
     }
-    let mut city = from_value(&data, def, seed).map_err(|e| format!("{}: {e}", path.display()))?;
+    let mut city = from_value(&data, def, seed).map_err(|e| format!("{name}: {e}"))?;
     city.style = Some(style);
-    city.style_source = Some(name);
+    city.style_source = Some(source);
     Ok(city)
 }
 

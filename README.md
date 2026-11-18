@@ -8,7 +8,12 @@ of SimCity (2013) with the Extended GlassBox additions for urban digital twins; 
 
 It is built for experiments as much as for games: every number is a parameter, runs are
 deterministic, and an experiment plays a game under several parameter sets and seeds in
-parallel and writes a report.
+parallel and writes a report. Games run on generated maps or on real ones (GeoJSON or a
+MapLibre style), and in the browser.
+
+**[Play Gangland: Bologna](https://ingmmo.com/lilienstern/gangland-bologna/)**: run a gang in
+Bologna's 2,606 census sections, in your browser. Documentation:
+**[ingmmo.com/lilienstern](https://ingmmo.com/lilienstern/)**.
 
 Named after Otto August Rühle von Lilienstern (1780–1847), Prussian officer, military writer
 and contemporary of Clausewitz.
@@ -24,8 +29,20 @@ cargo build --release
 
 `run` prints the course of the game every tenth of its length and a summary; `--csv` writes
 the time series and `--geojson` the final map (open it in QGIS or geojson.io: neighbourhoods
-are coloured by gang). `--set name=value` changes any parameter. `experiment` writes
-`out/<experiment>/report.md`, `summary.csv`, one series per run and a map per variant.
+are coloured by gang). `--map DIR` writes a viewer: open `DIR/index.html` to replay the game
+over a basemap, or use `DIR/style.json` (a MapLibre style) elsewhere. `--set name=value`
+changes any parameter. `experiment` writes `out/<experiment>/report.md`, `summary.csv`, one
+series per run and a viewer per variant.
+
+On a real city:
+
+```sh
+./target/release/lilienstern run games/gangland --set city_file=maps/bologna-sections.geojson --map out/bologna
+```
+
+`city_file` takes any GeoJSON of polygons (neighbours are polygons sharing a border) or a
+MapLibre style with a GeoJSON source, which then also becomes the basemap. See
+[the maps](games/gangland/maps/README.md).
 
 ## Gangland
 
@@ -43,8 +60,8 @@ default, 10 km across, with a river and five bridges).
 * **Parameters** (`games/gangland/params.toml`): about 50 numbers, from the number of gangs to
   what police patrols go after.
 
-Five experiments come with it (`experiments/`); see [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md)
-for what they ask and what they found.
+Six experiments come with it (`experiments/`), one on Bologna; see
+[docs/EXPERIMENTS.md](docs/EXPERIMENTS.md) for what they ask and what they found.
 
 ## Documentation
 
@@ -61,6 +78,8 @@ for what they ask and what they found.
 | `crates/glassbox` | The GlassBox rule language and resource-flow engine on a graph of places. No dependencies; usable on its own. |
 | `crates/lilienstern` | The engine: maps (generated or GeoJSON), games, factions, scripts, the AI, control, metrics, experiments. |
 | `crates/lilienstern-cli` | The `lilienstern` command. |
+| `crates/lilienstern-web` | The engine as WebAssembly, driven by JSON messages, for the browser. |
+| `web/gangland-bologna` | The browser game. `tools/site.py` builds the site (docs and game). |
 
 ## License
 

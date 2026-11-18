@@ -23,5 +23,6 @@ pub mod viewer;
 pub mod world;
 
 pub use game::Game;
+pub use glassbox;
 pub use params::Params;
 pub use world::World;

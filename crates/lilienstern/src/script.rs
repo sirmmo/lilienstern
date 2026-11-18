@@ -222,6 +222,8 @@ pub enum Target {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Decision {
     pub name: String,
+    /// What a player sees (`label ...`; the name by default).
+    pub label: String,
     pub who: Option<Kind>,
     pub target: Target,
     pub every: u32,
@@ -557,6 +559,7 @@ pub fn compile(
         let mut target = Target::None;
         let mut scope = EventScope::Place;
         let mut every_n = 1;
+        let mut label = b.name.replace('_', " ");
         let decision = b.kind == "decision";
         for l in &b.lines {
             let c = Ctx { file, line: l };
@@ -567,6 +570,7 @@ pub fn compile(
                 "log" => effects.push(effect(rules, script, &c, 0)?),
                 "every" => every_n = every(&c)?,
                 "for" => kind_of = who(&c)?,
+                "label" if decision => label = l.words[1..].join(" "),
                 "weight" if decision => weights.push(weight(rules, &c)?),
                 "cost" if decision => {
                     let (id, i) = if c.word(1)? == "global" { (c.word(2)?, 3) } else { (c.word(1)?, 2) };
@@ -637,6 +641,7 @@ pub fn compile(
         if decision {
             script.decisions.push(Decision {
                 name: b.name.clone(),
+                label,
                 who: kind_of,
                 target,
                 every: every_n,

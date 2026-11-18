@@ -110,7 +110,29 @@ neighbours; numeric properties become fields maps can start from). The map is ex
 GeoJSON with each place's owner, maps, presence and units.
 
 Real neighbourhoods (from OpenStreetMap, a city's statistical areas, or OHM/OFM for historical
-and fictional maps) work through the import: set `geojson = "file.geojson"` in `[city]`.
+and fictional maps) work through the import: set `geojson = "file.geojson"` in `[city]`. A
+MapLibre style works too: its GeoJSON source is the map and the style is drawn under the game.
+Gangland ships Bologna's 90 statistical areas and 2,606 census sections, with income and
+residents from the city's open data (`tools/bologna.py`).
+
+A run can write a **viewer** (`--map DIR`): `index.html` replays the game over the basemap
+from snapshots kept every `sample_every` days, `style.json` is a MapLibre style with the game's
+layers, and `map.geojson` the last day.
+
+## Playing
+
+A person can play one faction: `World::player` names it, the AI leaves it alone, and
+`World::options(faction, place)` lists what it can do there (with costs, `chance` taken as met)
+while `World::take` does it, with the same checks the AI faces and the faction's `actions` a
+day. Decisions carry a `label` for players.
+
+The browser game (`web/gangland-bologna`) runs the engine as WebAssembly. `lilienstern-web`
+exposes three functions with no generated glue: the page writes a JSON request into the
+module's memory, calls `lil_call`, and reads the JSON answer (`new`, `state`, `place`,
+`options`, `take`, `step`, `summary`). Games load from files in memory (`Game::from_files`), so
+the page fetches the game's TOML, scripts and map and hands them over. The module is about
+1 MB; on 2,606 places a day takes a few milliseconds natively, and a month about a second
+in the browser.
 
 ## Performance
 
@@ -123,8 +145,8 @@ runs on all cores; the five shipped experiments (about 200 runs) take under 30 s
   changes to the rules.
 * **Events with choices**: options for a player, picked by weight for the AI.
 * **Diplomacy**: relations between factions, truces and alliances as decisions and modifiers.
-* **A player**: a faction controlled from an interface instead of the AI, then a map view
-  (citysim's renderer, or Bevy).
+* **More for players**: events that ask the player, a history of what happened to them, and
+  saving a game in the browser.
 * **Mods**: folders of TOML and scripts laid over a game.
 * **Lockstep multiplayer** on top of determinism.
 * **Calibration**: runs compared with measured data, as the Extended GlassBox paper proposes

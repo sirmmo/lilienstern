@@ -35,7 +35,9 @@
 //! hold = 20
 //! ```
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use glassbox::Rules;
 use serde::Deserialize;
@@ -215,6 +217,57 @@ fn d_hotspot() -> f64 {
     5.0
 }
 
+/// Where a game's files are: a folder, or in memory.
+#[derive(Clone, Debug)]
+pub enum Files {
+    Dir(PathBuf),
+    Memory(Arc<BTreeMap<String, String>>),
+}
+
+/// `dir/name`, for `/` separated paths (`a/b.json` + `c.json` = `a/c.json`).
+pub fn sibling(path: &str, name: &str) -> String {
+    match path.rfind('/') {
+        Some(i) => format!("{}/{name}", &path[..i]),
+        None => name.to_string(),
+    }
+}
+
+fn normal(name: &str) -> String {
+    let mut parts: Vec<&str> = Vec::new();
+    for p in name.split('/') {
+        match p {
+            "" | "." => {}
+            ".." => {
+                parts.pop();
+            }
+            p => parts.push(p),
+        }
+    }
+    parts.join("/")
+}
+
+impl Files {
+    pub fn read(&self, name: &str) -> Result<String, String> {
+        match self {
+            Files::Dir(d) => {
+                let p = d.join(name);
+                std::fs::read_to_string(&p).map_err(|e| format!("{}: {e}", p.display()))
+            }
+            Files::Memory(m) => m
+                .get(&normal(name))
+                .cloned()
+                .ok_or_else(|| format!("{name}: no such file")),
+        }
+    }
+
+    pub fn exists(&self, name: &str) -> bool {
+        match self {
+            Files::Dir(d) => d.join(name).exists(),
+            Files::Memory(m) => m.contains_key(&normal(name)),
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Choice {
     Weighted,
@@ -256,6 +309,8 @@ pub struct Game {
     pub name: String,
     pub description: String,
     pub dir: PathBuf,
+    /// Where the game's files are read from.
+    pub files: Files,
     pub days: u32,
     pub sample_every: u32,
     pub city: CityDef,
@@ -291,11 +346,22 @@ fn amounts(rules: &mut Rules, what: &str, t: &toml::Table) -> Result<Vec<(usize,
 impl Game {
     /// Loads the game in `dir` with its parameters overridden by `overrides`.
     pub fn load(dir: &Path, overrides: &Params) -> Result<Game, String> {
-        let read = |name: &str| {
-            std::fs::read_to_string(dir.join(name))
-                .map_err(|e| format!("{}: {e}", dir.join(name).display()))
+        Game::load_from(Files::Dir(dir.to_path_buf()), overrides)
+    }
+
+    /// Loads a game from files in memory (paths relative to the game, `/` separated): for the
+    /// browser, where there is no file system.
+    pub fn from_files(files: BTreeMap<String, String>, overrides: &Params) -> Result<Game, String> {
+        Game::load_from(Files::Memory(Arc::new(files)), overrides)
+    }
+
+    fn load_from(files: Files, overrides: &Params) -> Result<Game, String> {
+        let read = |name: &str| files.read(name);
+        let dir = match &files {
+            Files::Dir(d) => d.clone(),
+            Files::Memory(_) => PathBuf::from("."),
         };
-        let mut params = if dir.join("params.toml").exists() {
+        let mut params = if files.exists("params.toml") {
             Params::from_toml(&read("params.toml")?).map_err(|e| format!("params.toml: {e}"))?
         } else {
             Params::default()
@@ -432,7 +498,8 @@ impl Game {
         Ok(Game {
             name: g.name,
             description: g.description,
-            dir: dir.to_path_buf(),
+            dir,
+            files,
             days: g.days,
             sample_every: g.sample_every.unwrap_or(10).max(1),
             city: g.city,

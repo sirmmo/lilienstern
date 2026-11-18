@@ -4,6 +4,7 @@
 # ---------- gangs ----------
 
 decision expand                  # move into a neighbouring block
+    label Move in
     for gang
     target adjacent
     cost global Crew $expand_crew
@@ -18,6 +19,7 @@ decision expand                  # move into a neighbouring block
 end
 
 decision reinforce               # answer a rival moving in
+    label Send reinforcements
     for gang
     target owned
     cost global Crew 2
@@ -28,6 +30,7 @@ decision reinforce               # answer a rival moving in
 end
 
 decision hold_ground             # keep up presence where it is fading
+    label Hold the block
     for gang
     target owned
     cost global Crew 1
@@ -38,6 +41,7 @@ decision hold_ground             # keep up presence where it is fading
 end
 
 decision attack                  # hit a rival's block
+    label Attack
     for gang
     target adjacent
     if owner other
@@ -54,6 +58,7 @@ decision attack                  # hit a rival's block
 end
 
 decision regroup                 # come back to blocks left empty
+    label Take back the block
     for gang
     target present
     if owner none
@@ -66,6 +71,7 @@ decision regroup                 # come back to blocks left empty
 end
 
 decision open_corner
+    label Open a street corner
     for gang
     target owned
     cost global Cash $corner_cost
@@ -77,6 +83,7 @@ decision open_corner
 end
 
 decision open_racket
+    label Start a protection racket
     for gang
     target owned
     cost global Cash $racket_cost
@@ -88,6 +95,7 @@ decision open_racket
 end
 
 decision open_lab
+    label Set up a lab
     for gang
     target owned
     cost global Cash $lab_cost
@@ -100,6 +108,7 @@ decision open_lab
 end
 
 decision hire                    # turn cash into muscle
+    label Hire muscle
     for gang
     target none
     cost global Cash $hire_cost
@@ -110,6 +119,7 @@ decision hire                    # turn cash into muscle
 end
 
 decision open_safehouse
+    label Open a safehouse
     for gang
     target owned
     cost global Cash $safehouse_cost
@@ -120,6 +130,7 @@ decision open_safehouse
 end
 
 decision bribe                   # make the police look elsewhere
+    label Bribe the police
     for gang
     target owned
     cost global Cash $bribe_cost
@@ -132,6 +143,7 @@ end
 # ---------- police ----------
 
 decision patrol
+    label Patrol
     for police
     target any
     cost global Budget $patrol_cost
@@ -145,6 +157,7 @@ decision patrol
 end
 
 decision raid
+    label Raid
     for police
     target any
     cost global Budget $raid_cost

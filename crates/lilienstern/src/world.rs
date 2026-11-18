@@ -66,6 +66,20 @@ impl Sums {
     }
 }
 
+/// A decision a faction can take, as listed by [`World::options`].
+#[derive(Clone, Debug, PartialEq)]
+pub struct Offer {
+    pub decision: usize,
+    pub name: String,
+    pub label: String,
+    pub target: Option<usize>,
+    pub affordable: bool,
+    /// (resource, amount).
+    pub costs: Vec<(String, f64)>,
+    /// What the AI would score it.
+    pub score: f64,
+}
+
 /// The state of the map on a day, for replaying a game.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Frame {
@@ -135,6 +149,12 @@ pub struct World<'g> {
     pub series: Series,
     /// Snapshots for replaying the game, when kept (see [`World::keep_history`]).
     pub history: Option<Vec<Frame>>,
+    /// The faction a person plays: the AI leaves it alone, and [`World::take`] acts for it.
+    pub player: Option<usize>,
+    /// Decisions the player has taken today.
+    pub player_actions: u32,
+    /// While true, `chance` conditions hold without drawing (to list options).
+    dry: bool,
     logs: Vec<f64>,
     today: Sums,
     period: Sums,
@@ -146,7 +166,7 @@ pub struct World<'g> {
 impl<'g> World<'g> {
     pub fn new(game: &'g Game, seed: u64) -> Result<World<'g>, String> {
         let city = match game.city.import_file() {
-            Some(f) => city::load(&game.dir.join(f), &game.city, seed)?,
+            Some(f) => city::load_with(f, &|n: &str| game.files.read(n), &game.city, seed)?,
             None => city::generate(&game.city, seed),
         };
         Ok(World::with_city(game, seed, city))
@@ -200,6 +220,9 @@ impl<'g> World<'g> {
             ever_hot: vec![false; n],
             series: Series::default(),
             history: None,
+            player: None,
+            player_actions: 0,
+            dry: false,
             logs: vec![0.0; rules.metrics.len()],
             today: Sums::default(),
             period: Sums::default(),
@@ -370,7 +393,122 @@ impl<'g> World<'g> {
 
         // 7. Metrics.
         self.day += 1;
+        self.player_actions = 0;
         self.record();
+    }
+
+    // ---------- playing ----------
+
+    fn is_target(&self, f: usize, t: Target, p: usize) -> bool {
+        let contest = self.game.control.contest;
+        match t {
+            Target::None => false,
+            Target::Owned => self.owner[p] == Some(f),
+            Target::Adjacent => {
+                self.owner[p] != Some(f)
+                    && self.city.neighbours[p]
+                        .iter()
+                        .any(|&q| self.owner[q] == Some(f))
+            }
+            Target::Present => self.presence[f][p] > 0.5,
+            Target::Contested => self.presence[f][p] > contest && self.rival(Some(f), p) > contest,
+            Target::Any => true,
+        }
+    }
+
+    /// The decisions faction `f` can take now on `place` (or, with no place, on itself), with
+    /// their costs and whether it can pay them. `chance` conditions are taken as met.
+    pub fn options(&mut self, f: usize, place: Option<usize>) -> Vec<Offer> {
+        let g = self.game;
+        let kind = g.factions[f].kind;
+        let acct = self.factions[f].account;
+        let mut out = Vec::new();
+        self.dry = true;
+        for (di, d) in g.script.decisions.iter().enumerate() {
+            if d.who.is_some_and(|k| k != kind) {
+                continue;
+            }
+            let fits = match place {
+                None => d.target == Target::None,
+                Some(p) => self.is_target(f, d.target, p),
+            };
+            if !fits {
+                continue;
+            }
+            let ctx = Ctx {
+                faction: Some(f),
+                place,
+            };
+            if !self.check_all(&d.conds, ctx) {
+                continue;
+            }
+            let score: f64 = d
+                .weights
+                .iter()
+                .map(|w| w.k * self.term(&w.term, ctx))
+                .sum();
+            out.push(Offer {
+                decision: di,
+                name: d.name.clone(),
+                label: d.label.clone(),
+                target: place,
+                affordable: d.costs.iter().all(|&(r, v)| self.gb.accounts[acct][r] >= v),
+                costs: d
+                    .costs
+                    .iter()
+                    .map(|&(r, v)| (g.rules.resources[r].id.clone(), v))
+                    .collect(),
+                score,
+            });
+        }
+        self.dry = false;
+        out
+    }
+
+    /// Takes a decision for faction `f`, as the AI would: it must be one of its
+    /// [`options`](World::options), affordable, and (for the player) within its actions today.
+    pub fn take(&mut self, f: usize, decision: usize, place: Option<usize>) -> Result<(), String> {
+        let g = self.game;
+        let d = g.script.decisions.get(decision).ok_or("no such decision")?;
+        if self.player == Some(f) && self.player_actions >= g.factions[f].actions {
+            return Err(format!(
+                "no actions left today (you have {} a day)",
+                g.factions[f].actions
+            ));
+        }
+        if !self
+            .options(f, place)
+            .iter()
+            .any(|o| o.decision == decision)
+        {
+            return Err(format!("{} is not possible there", d.name));
+        }
+        let acct = self.factions[f].account;
+        if let Some(&(r, v)) = d
+            .costs
+            .iter()
+            .find(|&&(r, v)| self.gb.accounts[acct][r] < v)
+        {
+            return Err(format!("{} needs {v} {}", d.name, g.rules.resources[r].id));
+        }
+        let ctx = Ctx {
+            faction: Some(f),
+            place,
+        };
+        for &(r, v) in &d.costs {
+            self.gb.accounts[acct][r] -= v;
+        }
+        if self.check_all(&d.conds, ctx) {
+            for e in &d.effects {
+                self.apply(e, ctx);
+            }
+        }
+        self.taken[decision] += 1;
+        if self.player == Some(f) {
+            self.player_actions += 1;
+        }
+        self.update_owners(true);
+        Ok(())
     }
 
     // ---------- queries ----------
@@ -447,7 +585,7 @@ impl<'g> World<'g> {
                 .faction
                 .is_some_and(|f| cmp.test(self.rank(f) as f64, value)),
             Cond::Day { cmp, value } => cmp.test(f64::from(self.day), value),
-            Cond::Chance(p) => self.rng.f64() < p,
+            Cond::Chance(p) => self.dry || self.rng.f64() < p,
         }
     }
 
@@ -631,7 +769,7 @@ impl<'g> World<'g> {
         let g = self.game;
         let mut opts: Vec<Opt> = Vec::new();
         for f in 0..self.factions.len() {
-            if !self.factions[f].alive {
+            if !self.factions[f].alive || self.player == Some(f) {
                 continue;
             }
             let def = &g.factions[f];

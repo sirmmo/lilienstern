@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gangland: Bologna · Lilienstern</title>
+<meta name="description" content="Run a gang in Bologna, block by block. A game of the Lilienstern engine.">
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<div id="map"></div>
+
+<div id="hud" class="panel" hidden>
+  <div class="gang"><i id="gangColor"></i><b id="gangName"></b><span id="rank" class="muted"></span></div>
+  <div class="day"><span id="day"></span><span class="muted"> / <span id="days"></span></span></div>
+  <div class="stats">
+    <div><span class="lbl">Cash</span><b id="cash"></b></div>
+    <div><span class="lbl">Crew</span><b id="crew"></b></div>
+    <div><span class="lbl">Blocks</span><b id="blocks"></b></div>
+  </div>
+  <div class="actions"><span class="lbl">Moves today</span><span id="moves"></span></div>
+  <div id="own"></div>
+  <div class="buttons">
+    <button id="bDay" class="primary" title="End the day (space)">End day</button>
+    <button id="bWeek">+7 days</button>
+    <button id="bMonth">+30 days</button>
+  </div>
+  <button id="bFold" class="fold">Gangs and views ▾</button>
+  <div class="view">Show <select id="view"></select></div>
+  <div id="legend"></div>
+  <div class="links"><a href="#" id="bHelp">How to play</a> · <a href="../">Lilienstern</a></div>
+</div>
+
+<div id="card" class="panel" hidden>
+  <button id="cardClose" class="close" aria-label="Close">×</button>
+  <h2 id="cardName"></h2>
+  <div id="cardOwner" class="muted"></div>
+  <div id="cardBody"></div>
+  <h3>Your moves here</h3>
+  <div id="cardOptions"></div>
+</div>
+
+<div id="news"></div>
+
+<div id="start" class="overlay">
+  <div class="sheet">
+    <h1>Gangland: Bologna</h1>
+    <p class="lead">Run a gang in Bologna, block by block.</p>
+    <p>The city is cut into its real census sections (or its 90 statistical areas), with each block's
+      wealth from the median income of its area and its residents from the city's open data. Six gangs start in
+      the poorer blocks. You run one; the others and the police are run by the
+      <a href="../">Lilienstern</a> engine, in your browser.</p>
+    <h3>Map</h3>
+    <div class="choices" id="mapChoice">
+      <label><input type="radio" name="map" value="sections" checked> 2,606 census sections <span class="muted">(small blocks, a long game)</span></label>
+      <label><input type="radio" name="map" value="areas"> 90 statistical areas <span class="muted">(large blocks, fast wars)</span></label>
+    </div>
+    <h3>Your gang</h3>
+    <div id="gangChoice" class="gangs"><span class="muted">Loading the engine…</span></div>
+    <div class="seed">Seed <input id="seed" type="number" min="1" step="1"></div>
+    <button id="bStart" class="primary big" disabled>Start</button>
+    <p id="startError" class="error"></p>
+    <p class="muted small">Data: Comune di Bologna open data (CC BY 4.0). Map: © OpenStreetMap contributors.</p>
+  </div>
+</div>
+
+<div id="help" class="overlay" hidden>
+  <div class="sheet">
+    <h2>How to play</h2>
+    <ol>
+      <li><b>Click a block</b> to see who holds it, how strong each gang is there, its wealth, police and violence, and the moves you can make there.</li>
+      <li>You have <b>three moves a day</b>. <i>Move in</i> next to your turf, <i>reinforce</i> and <i>hold</i> what you have, <i>attack</i> a rival's block.
+        Moves cost <b>crew</b>, which your safehouses recruit in poor blocks, or <b>cash</b>, which your corners (supplied by your labs) and rackets (in rich blocks) make.</li>
+      <li><b>End the day</b> (space) and the city moves: rivals expand and attack, gangs clash where they meet, the police patrols where the violence is and raids busy blocks.</li>
+      <li>A block is yours while you are the strongest there by a margin. Lose it, and what you built there goes to the new holder.</li>
+      <li>The game lasts two years. Hold as much of the city as you can.</li>
+    </ol>
+    <button class="primary" id="bHelpClose">Back to the streets</button>
+  </div>
+</div>
+
+<div id="over" class="overlay" hidden>
+  <div class="sheet">
+    <h2>Two years later</h2>
+    <div id="overText"></div>
+    <button class="primary big" id="bAgain">Play again</button>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
