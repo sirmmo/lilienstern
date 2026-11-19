@@ -6,8 +6,11 @@ decision raise_gunners
     for realm
     target owned
     if foes is 0
-    if army less $max_army
     do raise gunners
+    do map Happiness add -$conscription
     weight 1.2
     weight threat 0.5
+    weight balance Funds $thrift
+    weight army -$army_weight
+    weight map Happiness 0.004
 end

@@ -16,7 +16,6 @@ start_recruits = 40
 start_presence = 50       # at the family seat (60% next to it)
 start_radius = 1
 family_actions = 2        # decisions per day
-max_army = 16
 
 # Terrain from real elevation (mean of the place, in metres) and no forest data
 mountains_above = 700
@@ -33,6 +32,27 @@ recruits_per_thousand = 0.00085
 learning = 0                     # Marches' flat learning is off: Italia's follows the people
 learning_per_thousand = 0.00025
 learning_per_university = 0.2    # each university (see maps/README.md)
+
+# The people (people.lil): Happiness, 0 to 100 in each province, 50 when content
+mood_keep = 0.98          # every day a province keeps this much of its mood...
+mood_base = 1             # ...and gains this: left alone, it settles at 50
+big_realm = 40            # a realm with more provinces than this: each one less happy by
+huge_realm = 80           # ...and again above this
+distant_court = 0.2       # ...this much a day (about 10 points)
+weariness = 0.5           # a day where battles were fought (war alone: about 25)
+billets = 0.2             # a day where the realm's own troops are
+garrison = 0.3            # a day more where 4 or more are
+plunder = 1.5             # a day in every province while troops go unpaid
+conscription = 5          # where a troop is raised
+revolt_below = 15         # below this the province revolts: the realm's hold falls by
+revolt = 3                # ...this much a day
+feast_cost = 15           # Feed the people: Happiness up by
+feast = 20                # ...this much (half next door)
+war_tax = 0.4             # Levy a war tax: funds per point of the province's wealth,
+war_tax_anger = 25        # ...and Happiness down by this much
+disband_recruits = 5      # recruits back from a disbanded troop
+thrift = 0.25             # how much the AI's raising minds its balance (funds a day)
+army_weight = 0.4         # ...and the troops it has (people are free to ignore both)
 
 # What decisions cost and do (Marches' decisions)
 settle_cost = 12

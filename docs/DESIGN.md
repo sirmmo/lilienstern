@@ -39,14 +39,15 @@
    place, maps decay and diffuse.
 3. Factions get their **income**.
 4. **Events** fire where their conditions hold.
-5. Each faction's **AI** takes up to `actions` decisions (which may raise troops and give
-   them orders).
-6. **Troops** march, fight where enemies meet, occupy places, are paid and heal.
+5. Factions **pay their troops' upkeep** (as much as they have); then each faction's **AI**
+   takes up to `actions` decisions (which may raise troops and give them orders).
+6. **Troops** march, fight where enemies meet, occupy places, lose health if they went unpaid,
+   and heal.
 7. **Control**: gangs with presence above `contest` in the same place clash (each loses
    `attrition` times the others' presence, the place gets violence); presence decays, faster
    where the police is; places change hands when a gang has `hold` presence and `margin` times
    the next one's; a gang that loses a place loses its units there (seized or destroyed).
-8. **Metrics** are recorded.
+8. **Metrics** are recorded, and the day's **ledger** is closed.
 
 Control is the one built-in mechanic tied to a genre (territory held by presence). Its numbers
 are in `[control]`, and a game that does not use presence simply has no gangs.
@@ -102,6 +103,37 @@ and never fight or take each other's land, factions at peace stay out of each ot
 One lesson from tuning Marches: with the default saving rule a faction always ends up buying
 its cheapest troop, because a cheap pick in between ends the saving for a dear one. Factions
 can now save for a goal (`saving = "goal"`).
+
+## The economy
+
+Every change to a faction's resources is booked in a **ledger**, by where it came from: its
+fixed income, each event (taxes, levies), each decision, research, troop upkeep, and "other"
+for what GlassBox's own rules did. The day's ledger closes at the end of the day; what no
+script booked is found by comparing the accounts with the day before, so the ledger always
+adds up to the change. It is bookkeeping only: nothing in the game depends on it except the
+`income`, `upkeep` and `balance` that scripts can read (the last finished day's), so adding it
+changed no game.
+
+Armies have **no cap**: only their cost. Upkeep is paid every morning, before any decision,
+as far as the treasury goes; troops lose health for the share left unpaid. A cap used to keep
+the AI from raising troops forever; now the AI's own weights do it (`weight balance Funds`,
+`weight army`), and a person may raise as many as they can pay for once, and keep them as long
+as the treasury lasts. Two lessons from tuning Marches and Italia:
+
+* With upkeep due after the decisions, the AI spent all its funds every morning and left even
+  a rich realm's troops unpaid. Paying first fixed it: unpaid days went from hundreds a game
+  to a handful.
+* Without the cap, the largest realm snowballed (one family took 95% of Italy). The cap had
+  been doing the AI's restraint; `weight army -0.4` on raising (the AI's taste, not a rule)
+  brought back the old balance: 2.8 families of 8 left after five years, as with the cap.
+
+**Happiness** (Marches' `people.lil`, shared by Italia) is a map, not engine code: taxes and
+levies are multiplied by it (`times map Happiness 0.02`), every day it moves towards 50, and
+battles, quartered troops, levies, war taxes, very big realms and, most of all, unpaid troops
+push it down; below 15 a province revolts (its holder's presence falls). War alone settles a
+province at about 25 (half the taxes, no revolt): when war could push provinces into revolt,
+revolts helped attackers (the defender's provinces are where the fighting is) and sped up
+conquest.
 
 ## Techs
 

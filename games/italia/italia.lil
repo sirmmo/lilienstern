@@ -1,33 +1,39 @@
 # Italia's economy: what a place pays and gives follows its people (1871 census, in thousands),
-# so Napoli or Milano are worth more than an Alpine valley. The decisions and the troops are
+# so Napoli or Milano are worth more than an Alpine valley, and how happy they are (times
+# Happiness / 50, as in Marches: ../marches/people.lil). The decisions and the troops are
 # Marches' (../marches/realms.lil, ../marches/eras/).
 
 event taxes
+    label Taxes
     scope place
     for realm
-    do global Funds add map Population $tax_per_thousand
+    do global Funds add map Population $tax_per_thousand times map Happiness 0.02
 end
 
 event rich_taxes
+    label Taxes on the rich
     scope place
     for realm
     if map Wealth greater 60
-    do global Funds add map Population $rich_tax_per_thousand
+    do global Funds add map Population $rich_tax_per_thousand times map Happiness 0.02
 end
 
 event muster
+    label Levies
     scope place
     for realm
-    do global Recruits add map Population $recruits_per_thousand
+    do global Recruits add map Population $recruits_per_thousand times map Happiness 0.02
 end
 
 event learning
+    label Scholars
     scope place
     for realm
     do global Learning add map Population $learning_per_thousand
 end
 
 event studia                     # the old universities: Bologna, Padova, Napoli, Siena...
+    label The old universities
     scope place
     for realm
     if map University greater 0
@@ -35,6 +41,7 @@ event studia                     # the old universities: Bologna, Padova, Napoli
 end
 
 event more_learning              # the Universities tech doubles it
+    label Universities
     scope place
     for realm
     if tech universities

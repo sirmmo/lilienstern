@@ -4,10 +4,16 @@
 //! 2. **GlassBox** runs units, agents and map rules, then maps decay and diffuse;
 //! 3. factions get their **income**;
 //! 4. **events** fire;
-//! 5. every faction's **AI** takes its best decisions;
+//! 5. factions **pay their troops**, and every faction's **AI** takes its best decisions;
 //! 6. **troops** march, fight where enemies meet, occupy, are paid and heal ([`troops`]);
 //! 7. **control**: gangs clash where they meet, presence decays, places change hands;
-//! 8. **metrics** are recorded.
+//! 8. **metrics** are recorded, and the day's **ledger** is closed.
+//!
+//! The ledger books every change to a faction's resources under where it came from: its
+//! income, each event (taxes, levies), each decision (its costs and effects), research, troop
+//! upkeep, and "other" for whatever no script names (GlassBox's units and rules). It is only
+//! bookkeeping: nothing in the game reads it but the `income` and `balance` of the scripts,
+//! which read the last finished day.
 
 mod troops;
 
@@ -20,7 +26,7 @@ use glassbox::{around, State};
 use crate::city::{self, City};
 use crate::game::{Choice, Game, MapInit};
 use crate::rng::Rng;
-use crate::script::{Cond, Count, Effect, EventScope, Kind, Op, OwnerTest, Target, Term};
+use crate::script::{Cond, Count, Econ, Effect, EventScope, Kind, Op, OwnerTest, Target, Term};
 use crate::war::Relation;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -43,6 +49,55 @@ pub struct ActiveModifier {
 /// A decision the AI may take: its score, index, target and whether it is affordable.
 type Opt = (f64, usize, Option<usize>, bool);
 
+/// Ledger sources: a faction's fixed income, troop upkeep, research, and what no script names;
+/// then one per event, then one per decision (see [`World::source_names`]).
+pub const SRC_INCOME: usize = 0;
+pub const SRC_UPKEEP: usize = 1;
+pub const SRC_RESEARCH: usize = 2;
+pub const SRC_OTHER: usize = 3;
+const SRC_FIXED: usize = 4;
+
+/// What each faction's resources gained and lost, by source: `amount[f][r * sources + s]`.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Ledger {
+    pub amount: Vec<Vec<f64>>,
+    /// How many places (events), troops (upkeep) or decisions made each amount.
+    pub count: Vec<Vec<u32>>,
+}
+
+impl Ledger {
+    fn new(factions: usize, cells: usize) -> Ledger {
+        Ledger {
+            amount: vec![vec![0.0; cells]; factions],
+            count: vec![vec![0; cells]; factions],
+        }
+    }
+
+    fn clear(&mut self) {
+        self.amount.iter_mut().flatten().for_each(|v| *v = 0.0);
+        self.count.iter_mut().flatten().for_each(|v| *v = 0);
+    }
+
+    fn add(&mut self, other: &Ledger) {
+        for (a, b) in self
+            .amount
+            .iter_mut()
+            .flatten()
+            .zip(other.amount.iter().flatten())
+        {
+            *a += b;
+        }
+        for (a, b) in self
+            .count
+            .iter_mut()
+            .flatten()
+            .zip(other.count.iter().flatten())
+        {
+            *a += b;
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug)]
 struct Ctx {
     faction: Option<usize>,
@@ -63,6 +118,8 @@ struct Sums {
     destroyed: f64,
     /// Techs learnt.
     learnt: f64,
+    /// Faction-days with troops not fully paid.
+    unpaid: f64,
     metrics: Vec<f64>,
 }
 
@@ -76,6 +133,7 @@ impl Sums {
         self.raised += other.raised;
         self.destroyed += other.destroyed;
         self.learnt += other.learnt;
+        self.unpaid += other.unpaid;
         if self.metrics.len() < other.metrics.len() {
             self.metrics.resize(other.metrics.len(), 0.0);
         }
@@ -176,6 +234,28 @@ pub struct World<'g> {
     pub progress: Vec<f64>,
     /// `bonus[faction][troop kind]`: what the faction's techs add to its troops.
     bonus: Vec<Vec<crate::war::Bonus>>,
+    /// `due[faction][resource]`: what its troops cost a day.
+    pub due: Vec<Vec<f64>>,
+    /// Factions that could not pay all their troops today (or on the last day, before they pay).
+    pub unpaid: Vec<bool>,
+    /// The share of its troops' upkeep each faction could not pay today.
+    short: Vec<f64>,
+    /// Ledger sources (see [`SRC_INCOME`]).
+    sources: usize,
+    /// The source what is applied now is booked under.
+    source: usize,
+    /// The day being played (from the end of the last day, so it holds a player's decisions).
+    ledger: Ledger,
+    /// The last finished day, and the whole game.
+    pub yesterday: Ledger,
+    pub ledger_total: Ledger,
+    /// `earned[faction][resource]`: what its land gave on the last day (income and events).
+    pub earned: Vec<Vec<f64>>,
+    /// `yields[resource][place]`: what each place's events gave its holder on the last day.
+    pub yields: Vec<Vec<f64>>,
+    yields_open: Vec<Vec<f64>>,
+    /// Accounts when the last day closed, to find what no source explains.
+    snapshot: Vec<Vec<f64>>,
     /// Places where two gangs clashed today.
     pub contested: usize,
     /// Places above the control's hotspot level today.
@@ -242,9 +322,23 @@ impl<'g> World<'g> {
                 gb.accounts[i + 1][r] += v;
             }
         }
+        let nr = rules.resources.len();
+        let sources = SRC_FIXED + game.script.events.len() + game.script.decisions.len();
         let mut w = World {
             game,
             seed,
+            due: vec![vec![0.0; nr]; nf],
+            unpaid: vec![false; nf],
+            short: vec![0.0; nf],
+            sources,
+            source: SRC_OTHER,
+            ledger: Ledger::new(nf, nr * sources),
+            yesterday: Ledger::new(nf, nr * sources),
+            ledger_total: Ledger::new(nf, nr * sources),
+            earned: vec![vec![0.0; nr]; nf],
+            yields: vec![vec![0.0; n]; nr],
+            yields_open: vec![vec![0.0; n]; nr],
+            snapshot: Vec::new(),
             holders: (0..nf).filter(|&i| game.factions[i].kind.holds()).collect(),
             relation: (0..nf)
                 .map(|a| {
@@ -312,7 +406,75 @@ impl<'g> World<'g> {
         w.place_headquarters();
         w.update_owners(false);
         w.series.columns = w.columns();
+        w.snapshot = (0..nf)
+            .map(|f| w.gb.accounts[w.factions[f].account].clone())
+            .collect();
         w
+    }
+
+    /// Each ledger source: (kind, label). Kinds: income, upkeep, research, other, event, decision.
+    pub fn source_names(&self) -> Vec<(&'static str, String)> {
+        let s = &self.game.script;
+        let mut out = vec![
+            ("income", "Income".to_string()),
+            ("upkeep", "Troop upkeep".to_string()),
+            ("research", "Research".to_string()),
+            ("other", "Other".to_string()),
+        ];
+        out.extend(s.events.iter().map(|e| ("event", e.label.clone())));
+        out.extend(s.decisions.iter().map(|d| ("decision", d.label.clone())));
+        out
+    }
+
+    /// Books `x` of resource `r` for faction `f` under the current source; `n` places, troops
+    /// or decisions made it.
+    fn book(&mut self, f: usize, r: usize, x: f64, place: Option<usize>, n: u32) {
+        if x == 0.0 {
+            return;
+        }
+        let i = r * self.sources + self.source;
+        self.ledger.amount[f][i] += x;
+        self.ledger.count[f][i] += n;
+        let events = SRC_FIXED..SRC_FIXED + self.game.script.events.len();
+        if let Some(p) = place.filter(|_| events.contains(&self.source)) {
+            self.yields_open[r][p] += x;
+        }
+    }
+
+    /// Ends the day's ledger: what no source booked goes under "other".
+    fn close_ledger(&mut self) {
+        let nr = self.game.rules.resources.len();
+        let ns = self.sources;
+        let events = SRC_FIXED + self.game.script.events.len();
+        for f in 0..self.factions.len() {
+            let acct = self.factions[f].account;
+            for r in 0..nr {
+                let row = &self.ledger.amount[f][r * ns..(r + 1) * ns];
+                let booked: f64 = row.iter().sum();
+                let rest = self.gb.accounts[acct][r] - self.snapshot[f][r] - booked;
+                if rest.abs() > 1e-9 {
+                    self.ledger.amount[f][r * ns + SRC_OTHER] += rest;
+                    self.ledger.count[f][r * ns + SRC_OTHER] += 1;
+                }
+                let row = &self.ledger.amount[f][r * ns..(r + 1) * ns];
+                self.earned[f][r] = row[SRC_INCOME] + row[SRC_FIXED..events].iter().sum::<f64>();
+                self.snapshot[f][r] = self.gb.accounts[acct][r];
+            }
+        }
+        self.ledger_total.add(&self.ledger);
+        std::mem::swap(&mut self.yesterday, &mut self.ledger);
+        self.ledger.clear();
+        std::mem::swap(&mut self.yields, &mut self.yields_open);
+        self.yields_open.iter_mut().flatten().for_each(|v| *v = 0.0);
+    }
+
+    /// Faction `f`'s economy in resource `r` (see [`Econ`]).
+    pub fn economy(&self, what: Econ, f: usize, r: usize) -> f64 {
+        match what {
+            Econ::Income => self.earned[f][r],
+            Econ::Upkeep => self.due[f][r],
+            Econ::Balance => self.earned[f][r] - self.due[f][r],
+        }
     }
 
     fn place_headquarters(&mut self) {
@@ -389,6 +551,7 @@ impl<'g> World<'g> {
         self.today = Sums::default();
 
         // 1. Modifiers.
+        self.source = SRC_OTHER;
         self.gb.factor.iter_mut().for_each(|f| *f = 1.0);
         let day = self.day;
         self.modifiers.retain(|m| m.until > day);
@@ -411,16 +574,19 @@ impl<'g> World<'g> {
         glassbox::step(&g.rules, &self.city.neighbours, &mut self.gb);
 
         // 3. Income.
+        self.source = SRC_INCOME;
         for (f, def) in g.factions.iter().enumerate() {
             if self.factions[f].alive {
                 for &(r, v) in &def.income {
                     self.gb.accounts[self.factions[f].account][r] += v;
+                    self.book(f, r, v, None, 1);
                 }
             }
         }
 
         // 4. Events.
-        for e in &g.script.events {
+        for (ei, e) in g.script.events.iter().enumerate() {
+            self.source = SRC_FIXED + ei;
             if self.day % e.every != 0 {
                 continue;
             }
@@ -473,13 +639,21 @@ impl<'g> World<'g> {
             }
         }
 
-        // 5. Decisions.
+        // 5. Troops are paid, then decisions.
+        if self.troops.is_empty() {
+            self.unpaid.iter_mut().for_each(|u| *u = false);
+            self.short.iter_mut().for_each(|u| *u = 0.0);
+        } else {
+            self.pay();
+        }
         self.decide();
 
         // 6. Research, then troops.
         if !g.war.techs.is_empty() {
+            self.source = SRC_RESEARCH;
             self.study();
         }
+        self.source = SRC_OTHER;
         if !self.troops.is_empty() {
             self.war();
         }
@@ -491,6 +665,7 @@ impl<'g> World<'g> {
         self.day += 1;
         self.player_actions.iter_mut().for_each(|a| *a = 0);
         self.record();
+        self.close_ledger();
     }
 
     // ---------- playing ----------
@@ -636,14 +811,17 @@ impl<'g> World<'g> {
             faction: Some(f),
             place,
         };
+        self.source = SRC_FIXED + g.script.events.len() + decision;
         for &(r, v) in &d.costs {
             self.gb.accounts[acct][r] -= v;
+            self.book(f, r, -v, place, 1);
         }
         if self.check_all(&d.conds, ctx) {
             for e in &d.effects {
                 self.apply(e, ctx);
             }
         }
+        self.source = SRC_OTHER;
         self.taken[decision] += 1;
         if self.players.contains(&f) {
             self.player_actions[f] += 1;
@@ -718,8 +896,10 @@ impl<'g> World<'g> {
             }
             let Some(t) = self.research[f] else { continue };
             let acct = self.factions[f].account;
-            self.progress[f] += self.gb.accounts[acct][res];
+            let points = self.gb.accounts[acct][res];
+            self.progress[f] += points;
             self.gb.accounts[acct][res] = 0.0;
+            self.book(f, res, -points, None, 1);
             if self.progress[f] >= g.war.techs[t].cost {
                 self.progress[f] -= g.war.techs[t].cost;
                 self.known[f][t] = true;
@@ -812,6 +992,14 @@ impl<'g> World<'g> {
             Cond::Chance(p) => self.dry || self.rng.f64() < p,
             Cond::Count { what, cmp, value } => cmp.test(self.count(what, ctx), value),
             Cond::Tech(t) => ctx.faction.is_some_and(|f| self.known[f][t]),
+            Cond::Economy {
+                what,
+                resource,
+                cmp,
+                value,
+            } => ctx
+                .faction
+                .is_some_and(|f| cmp.test(self.economy(what, f, resource), value)),
             Cond::Relation(r) => fp.is_some_and(|(f, p)| {
                 self.owner[p].is_some_and(|o| o != f && self.relation[f][o] == r)
             }),
@@ -835,6 +1023,7 @@ impl<'g> World<'g> {
                 .map_or(0.0, |p| if self.owner[p].is_none() { 1.0 } else { 0.0 }),
             Term::Units(u) => ctx.place.map_or(0.0, |p| self.units_count(p, u) as f64),
             Term::Count(what) => self.count(what, ctx),
+            Term::Economy(what, r) => ctx.faction.map_or(0.0, |f| self.economy(what, f, r)),
         }
     }
 
@@ -858,6 +1047,9 @@ impl<'g> World<'g> {
             Count::Techs => ctx
                 .faction
                 .map_or(0.0, |f| self.known[f].iter().filter(|&&k| k).count() as f64),
+            Count::Unpaid => ctx
+                .faction
+                .map_or(0.0, |f| if self.unpaid[f] { 1.0 } else { 0.0 }),
             Count::Idle => ctx.faction.map_or(0.0, |f| {
                 self.troops
                     .iter()
@@ -932,23 +1124,21 @@ impl<'g> World<'g> {
                 resource,
                 op,
                 value,
+                ref by,
             } => {
-                if let Some(f) = ctx.faction {
-                    let v = &mut self.gb.accounts[self.factions[f].account][resource];
-                    *v = op.apply(*v, value).max(0.0);
+                let Some(f) = ctx.faction else { return };
+                let mut x = value;
+                if !by.is_empty() {
+                    let Some(p) = ctx.place else { return };
+                    for &(m, k) in by {
+                        x *= self.gb.maps[m][p] * k;
+                    }
                 }
-            }
-            Effect::GlobalByMap {
-                resource,
-                op,
-                map,
-                k,
-            } => {
-                if let Some((f, p)) = fp {
-                    let x = k * self.gb.maps[map][p];
-                    let v = &mut self.gb.accounts[self.factions[f].account][resource];
-                    *v = op.apply(*v, x).max(0.0);
-                }
+                let v = &mut self.gb.accounts[self.factions[f].account][resource];
+                let before = *v;
+                *v = op.apply(*v, x).max(0.0);
+                let delta = *v - before;
+                self.book(f, resource, delta, ctx.place, 1);
             }
             Effect::Modifier { modifier, days } => {
                 if let Some(p) = ctx.place {
@@ -1018,6 +1208,11 @@ impl<'g> World<'g> {
                     if let Some(o) = self.owner[p].filter(|&o| o != f) {
                         self.set_relation(f, o, r);
                     }
+                }
+            }
+            Effect::Disband => {
+                if let Some((f, p)) = fp {
+                    self.disband(f, p);
                 }
             }
         }
@@ -1152,8 +1347,10 @@ impl<'g> World<'g> {
                 let Some(i) = chosen else { break };
                 let (_, di, t, _) = opts[i];
                 let d = &g.script.decisions[di];
+                self.source = SRC_FIXED + g.script.events.len() + di;
                 for &(r, v) in &d.costs {
                     self.gb.accounts[acct][r] -= v;
+                    self.book(f, r, -v, t, 1);
                 }
                 let ctx = Ctx {
                     faction: Some(f),
@@ -1163,6 +1360,7 @@ impl<'g> World<'g> {
                     self.apply(e, ctx);
                 }
                 self.taken[di] += 1;
+                self.source = SRC_OTHER;
             }
         }
     }
@@ -1559,6 +1757,7 @@ impl<'g> World<'g> {
             s.insert("raised".into(), self.total.raised);
             s.insert("destroyed".into(), self.total.destroyed);
             s.insert("troops".into(), self.troops.len() as f64);
+            s.insert("unpaid".into(), self.total.unpaid);
             for &h in &self.holders {
                 s.insert(
                     format!("territory.{}", g.factions[h].id),

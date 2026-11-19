@@ -153,6 +153,35 @@ pub enum Cond {
     Relation(Relation),
     /// The faction knows a tech.
     Tech(usize),
+    /// The faction's economy in one resource: see [`Econ`].
+    Economy {
+        what: Econ,
+        resource: usize,
+        cmp: Cmp,
+        value: f64,
+    },
+}
+
+/// A faction's economy in one resource, a day.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Econ {
+    /// What its land gave on the last day (its income and events: taxes, levies).
+    Income,
+    /// What its troops cost a day now.
+    Upkeep,
+    /// Income less upkeep.
+    Balance,
+}
+
+impl Econ {
+    fn parse(w: &str) -> Option<Econ> {
+        Some(match w {
+            "income" => Econ::Income,
+            "upkeep" => Econ::Upkeep,
+            "balance" => Econ::Balance,
+            _ => return None,
+        })
+    }
 }
 
 /// Numbers about troops, for conditions and weights. Strengths count a full troop as 1.
@@ -170,6 +199,8 @@ pub enum Count {
     Idle,
     /// How many techs the faction knows.
     Techs,
+    /// 1 when the faction could not pay all its troops' upkeep on the last day, else 0.
+    Unpaid,
 }
 
 impl Count {
@@ -181,6 +212,7 @@ impl Count {
             "army" => Count::Army,
             "idle" => Count::Idle,
             "techs" => Count::Techs,
+            "unpaid" => Count::Unpaid,
             _ => return None,
         })
     }
@@ -217,18 +249,14 @@ pub enum Effect {
         op: Op,
         value: f64,
     },
+    /// The faction's resource, by `value` times each map at the place times its factor
+    /// (`global Funds add map Population 0.001 times map Happiness 0.02`): income that follows
+    /// the land and its people.
     Global {
         resource: usize,
         op: Op,
         value: f64,
-    },
-    /// The faction's resource, by `k` times a map at the place (`global Funds add map
-    /// Population 0.001`): income that follows the land.
-    GlobalByMap {
-        resource: usize,
-        op: Op,
-        map: usize,
-        k: f64,
+        by: Vec<(usize, f64)>,
     },
     Modifier {
         modifier: usize,
@@ -260,6 +288,8 @@ pub enum Effect {
     },
     /// Sets the relation between the faction and the place's owner.
     SetRelation(Relation),
+    /// Disbands the faction's weakest troop at the place.
+    Disband,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -274,6 +304,7 @@ pub enum Term {
     /// Units at the place.
     Units(Option<usize>),
     Count(Count),
+    Economy(Econ, usize),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -320,6 +351,8 @@ pub enum EventScope {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Event {
     pub name: String,
+    /// How its effects are named where a player sees them (`label ...`; the name by default).
+    pub label: String,
     pub scope: EventScope,
     pub who: Option<Kind>,
     pub every: u32,
@@ -469,13 +502,19 @@ fn cond(rules: &mut Rules, war: &War, c: &Ctx, i: usize) -> Result<Cond, Error> 
                     .ok_or_else(|| c.err(format!("there is no tech {id:?}")))?,
             )
         }
-        w => match Count::parse(w) {
-            Some(what) => Cond::Count {
+        w => match (Count::parse(w), Econ::parse(w)) {
+            (Some(what), _) => Cond::Count {
                 what,
                 cmp: c.cmp(i + 1)?,
                 value: c.num(i + 2)?,
             },
-            None => return Err(c.err(format!("unknown condition {w:?}"))),
+            (_, Some(what)) => Cond::Economy {
+                what,
+                resource: global(rules, c, c.word(i + 1)?)?,
+                cmp: c.cmp(i + 2)?,
+                value: c.num(i + 3)?,
+            },
+            _ => return Err(c.err(format!("unknown condition {w:?}"))),
         },
     })
 }
@@ -522,19 +561,37 @@ fn effect(
             op: c.op(i + 1)?,
             value: c.num(i + 2)?,
         },
-        "global" if c.line.words.get(i + 3).map(String::as_str) == Some("map") => {
-            Effect::GlobalByMap {
-                resource: global(rules, c, c.word(i + 1)?)?,
-                op: c.op(i + 2)?,
-                map: rules.declare_map(c.word(i + 4)?),
-                k: c.num(i + 5)?,
+        "global" => {
+            // global R op (V | map M K) (times map M K)*
+            let resource = global(rules, c, c.word(i + 1)?)?;
+            let op = c.op(i + 2)?;
+            let mut by = Vec::new();
+            let mut j = i + 3;
+            let value = if c.word(j)? == "map" {
+                by.push((rules.declare_map(c.word(j + 1)?), c.num(j + 2)?));
+                j += 3;
+                1.0
+            } else {
+                j += 1;
+                c.num(j - 1)?
+            };
+            while j < c.line.words.len() {
+                if c.word(j)? != "times" || c.word(j + 1)? != "map" {
+                    return Err(c.err(format!(
+                        "global: expected `times map M k`, found {:?}",
+                        c.line.words[j..].join(" ")
+                    )));
+                }
+                by.push((rules.declare_map(c.word(j + 2)?), c.num(j + 3)?));
+                j += 4;
+            }
+            Effect::Global {
+                resource,
+                op,
+                value,
+                by,
             }
         }
-        "global" => Effect::Global {
-            resource: global(rules, c, c.word(i + 1)?)?,
-            op: c.op(i + 2)?,
-            value: c.num(i + 3)?,
-        },
         "modifier" => {
             let name = c.word(i + 1)?;
             let modifier = script
@@ -580,6 +637,7 @@ fn effect(
             },
         },
         "relation" => Effect::SetRelation(relation(c, i + 1)?),
+        "disband" => Effect::Disband,
         w => return Err(c.err(format!("unknown effect {w:?}"))),
     })
 }
@@ -609,9 +667,13 @@ fn weight(rules: &mut Rules, c: &Ctx) -> Result<Weight, Error> {
             ),
             None => (Term::Units(None), c.num(i + 1)?),
         },
-        t => match Count::parse(t) {
-            Some(what) => (Term::Count(what), c.num(i + 1)?),
-            None => return Err(c.err(format!("unknown weight {t:?}"))),
+        t => match (Count::parse(t), Econ::parse(t)) {
+            (Some(what), _) => (Term::Count(what), c.num(i + 1)?),
+            (_, Some(what)) => (
+                Term::Economy(what, global(rules, c, c.word(i + 1)?)?),
+                c.num(i + 2)?,
+            ),
+            _ => return Err(c.err(format!("unknown weight {t:?}"))),
         },
     };
     Ok(Weight { term, k })
@@ -713,7 +775,7 @@ pub fn compile(
                 "log" => effects.push(effect(rules, script, war, &c, 0)?),
                 "every" => every_n = every(&c)?,
                 "for" => kind_of = who(&c)?,
-                "label" if decision => label = l.words[1..].join(" "),
+                "label" => label = l.words[1..].join(" "),
                 "weight" if decision => weights.push(weight(rules, &c)?),
                 "cost" if decision => {
                     let (id, i) = if c.word(1)? == "global" { (c.word(2)?, 3) } else { (c.word(1)?, 2) };
@@ -770,10 +832,10 @@ pub fn compile(
                         | Effect::Seize
                         | Effect::Destroy { .. }
                         | Effect::Raise { .. }
-                        | Effect::GlobalByMap { .. }
                         | Effect::March { .. }
                         | Effect::SetRelation(_)
-                )
+                        | Effect::Disband
+                ) || matches!(e, Effect::Global { by, .. } if !by.is_empty())
             });
             if place_cond || place_effect {
                 return Err(Error::new(
@@ -801,6 +863,7 @@ pub fn compile(
         } else {
             script.events.push(Event {
                 name: b.name.clone(),
+                label,
                 scope,
                 who: kind_of,
                 every: every_n,
@@ -860,6 +923,72 @@ mod tests {
             }
         );
         assert_eq!(s.modifiers[0].output, 0.3);
+    }
+
+    #[test]
+    fn compiles_the_economy() {
+        let (s, rules) = build(
+            "event taxes\n label Taxes paid\n scope place\n do global Gold add map Pop 0.5 times map Mood 0.02\nend\n\
+             event flat\n scope place\n do global Gold add 2 times map Mood 0.02\nend\n\
+             decision raise\n target owned\n if balance Gold greater 0\n if unpaid is 0\n do disband\n weight upkeep Gold -1\nend\n",
+        )
+        .unwrap();
+        let (gold, pop, mood) = (
+            rules.resource("Gold").unwrap(),
+            rules.map("Pop").unwrap(),
+            rules.map("Mood").unwrap(),
+        );
+        assert_eq!(s.events[0].label, "Taxes paid");
+        assert_eq!(s.events[1].label, "flat");
+        assert_eq!(
+            s.events[0].effects[0],
+            Effect::Global {
+                resource: gold,
+                op: Op::Add,
+                value: 1.0,
+                by: vec![(pop, 0.5), (mood, 0.02)]
+            }
+        );
+        assert_eq!(
+            s.events[1].effects[0],
+            Effect::Global {
+                resource: gold,
+                op: Op::Add,
+                value: 2.0,
+                by: vec![(mood, 0.02)]
+            }
+        );
+        let d = &s.decisions[0];
+        assert_eq!(
+            d.conds[0],
+            Cond::Economy {
+                what: Econ::Balance,
+                resource: gold,
+                cmp: Cmp::Greater,
+                value: 0.0
+            }
+        );
+        assert!(matches!(
+            d.conds[1],
+            Cond::Count {
+                what: Count::Unpaid,
+                ..
+            }
+        ));
+        assert_eq!(d.effects[0], Effect::Disband);
+        assert_eq!(d.weights[0].term, Term::Economy(Econ::Upkeep, gold));
+        assert!(
+            build("event e\n scope place\n do global Gold add 2 times Mood\nend\n")
+                .unwrap_err()
+                .message
+                .contains("times map")
+        );
+        assert!(
+            build("event e\n scope faction\n do global Gold add 2 times map Mood 1\nend\n")
+                .unwrap_err()
+                .message
+                .contains("no place")
+        );
     }
 
     #[test]

@@ -10,7 +10,7 @@ for other projects: get the packs instead.
 | RPG Weapons Icons | the medieval troops: spear (levy), bow (archers), sword (knights) |
 | Blue Loot Box | the medieval men-at-arms (helmet) |
 | Sci-Fi Skill Icons | the future troops: militia, drone wing, battle mech, hovertank |
-| Spell Book Page 08 | the decisions (settle, govern, fortify, defend, attack, take, peace, war, alliance), recruits, provinces |
+| Spell Book Page 08 | the decisions (settle, govern, fortify, defend, attack, take, peace, war, alliance, feed the people, war tax, disband), recruits, provinces |
 | Trophy Icons | funds (coin), and the cups at the end of a game |
 
 Which file came from where (paths inside the packs):
@@ -33,6 +33,9 @@ icons/occupy.jpg <- spellbookpage08/spellbookpage08/SpellBook08_74.png
 icons/make_peace.jpg <- spellbookpage08/spellbookpage08/SpellBook08_54.png
 icons/declare_war.jpg <- spellbookpage08/spellbookpage08/SpellBook08_36.png
 icons/ally.jpg <- spellbookpage08/spellbookpage08/SpellBook08_72.png
+icons/feast.jpg <- spellbookpage08/spellbookpage08/SpellBook08_20.png
+icons/war_tax.jpg <- spellbookpage08/spellbookpage08/SpellBook08_18.png
+icons/disband.jpg <- spellbookpage08/spellbookpage08/SpellBook08_121.png
 icons/funds.jpg <- trophyicons/trophyicons/TrophyIcons_bg/TrophyIcons_56_b.png
 icons/recruits.jpg <- spellbookpage08/spellbookpage08/SpellBook08_26.png
 icons/provinces.jpg <- spellbookpage08/spellbookpage08/SpellBook08_74.png

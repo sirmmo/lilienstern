@@ -158,3 +158,25 @@ ol li { margin-bottom: 6px; }
   .troop { width: 24px; height: 24px; border-width: 2px; }
   .troop.mine { width: 28px; height: 28px; border-width: 3px; }
 }
+
+/* The treasury */
+.stats .money { cursor: pointer; }
+.stats .money:hover { outline: 1px solid var(--accent); }
+.stats .delta { grid-column: 1 / -1; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.stats .delta::after { content: ' a day'; }
+.good { color: #2e7d32; }
+.bad { color: #c62828; }
+body.future .good { color: #6fd08c; }
+body.future .bad { color: #ff7b72; }
+.stats .delta.good, .stats .delta.bad { font-weight: 600; }
+.warn { background: rgba(198, 40, 40, .12); border-left: 3px solid #c62828; padding: 4px 8px; margin: 4px 0; font-size: 12px; border-radius: 4px; }
+button.link { background: none; border: none; padding: 2px 0; color: var(--accent); text-decoration: underline; cursor: pointer; font-size: 12px; }
+#treasury .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+#treasury h4 { margin: 4px 0; color: var(--muted); font-weight: 600; }
+#treasury .res { margin-bottom: 14px; }
+table.ledger { width: 100%; border-collapse: collapse; font-size: 13px; }
+table.ledger td { padding: 2px 4px; border-bottom: 1px solid rgba(128, 128, 128, .18); }
+table.ledger td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+table.ledger tr.total td { font-weight: 600; border-bottom: none; }
+#legend .ramp.mood { background: linear-gradient(90deg, #a50026, #d73027 15%, #fdae61 35%, #ffffbf 50%, #a6d96a 75%, #1a9850); }
+@media (max-width: 640px) { #treasury .cols { grid-template-columns: 1fr; } }

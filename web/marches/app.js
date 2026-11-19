@@ -9,17 +9,19 @@
 const radio = (name) => document.querySelector(`input[name=${name}]:checked`).value;
 const CONFIG = Object.assign({
   id: 'marches',
-  files: () => ['params.toml', 'game.toml', 'realms.lil', 'eras/medieval.toml', 'eras/medieval.lil', 'eras/future.toml'],
+  files: () => ['params.toml', 'game.toml', 'realms.lil', 'people.lil', 'eras/medieval.toml', 'eras/medieval.lil', 'eras/future.toml'],
   probe: { provinces: 40 }, // a quick game, to learn the factions' names and colours
   params: () => ({ era: radio('era'), provinces: +radio('size') }),
   count: null, // the parameter with the number of factions that play, if the start screen sets it
   cities: null, // a GeoJSON of points (name, province, big) drawn as labels, fetched from game/
   crests: null, // faction name -> image
 }, window.GAME || {});
-const VIEWS = { Wealth: 'Wealth', Population: 'People', Elevation: 'Elevation', Fort: 'Castles', Violence: 'Battles' };
+const VIEWS = { Wealth: 'Wealth', Population: 'People', Happiness: 'Happiness', Elevation: 'Elevation', Fort: 'Castles', Violence: 'Battles' };
+// Views of what each province gave its holder on the last day (state.yields), not of a map.
+const YIELD_VIEWS = { Funds: 'Funds paid', Recruits: 'Recruits given' };
 const TWEEN_MS = 450;
 // Icons (web/marches/icons, see the README there): troops by era and id, decisions by name.
-const DECISION_ICONS = ['settle', 'govern', 'fortify', 'defend', 'attack', 'occupy', 'make_peace', 'declare_war', 'ally'];
+const DECISION_ICONS = ['settle', 'govern', 'fortify', 'defend', 'attack', 'occupy', 'make_peace', 'declare_war', 'ally', 'feast', 'war_tax', 'disband'];
 
 const $ = (id) => document.getElementById(id);
 const texts = {};
@@ -757,7 +759,7 @@ function terrainColor(i) {
 
 function paint() {
   if (!map || !map.getSource('places')) return;
-  const values = VIEWS[view] ? st.values || [] : null;
+  const values = VIEWS[view] ? st.values || [] : yieldView() ? st.yields[yieldView()] || [] : null;
   info.geojson.features.forEach((f, i) => {
     const o = st.owner[i];
     const fac = o >= 0 ? info.factions[o] : null;
@@ -768,8 +770,12 @@ function paint() {
     if (values) f.properties.v = values[i] || 0;
   });
   map.getSource('places').setData(info.geojson);
-  if (values) {
-    const max = Math.max(view === 'Fort' ? 3 : 1, ...values);
+  if (values && view === 'Happiness') {
+    // Red where people revolt, yellow when content (50), green when happy.
+    map.setPaintProperty('fill', 'fill-color', ['interpolate', ['linear'], ['get', 'v'], 0, '#a50026', 15, '#d73027', 35, '#fdae61', 50, '#ffffbf', 75, '#a6d96a', 100, '#1a9850']);
+    map.setPaintProperty('fill', 'fill-opacity', 0.75);
+  } else if (values) {
+    const max = Math.max(view === 'Fort' ? 3 : yieldView() ? 0.01 : 1, ...values);
     map.setPaintProperty('fill', 'fill-color', ['interpolate', ['linear'], ['get', 'v'], 0, '#ffffcc', max / 2, '#fd8d3c', max, '#bd0026']);
     map.setPaintProperty('fill', 'fill-opacity', ['interpolate', ['linear'], ['get', 'v'], 0, 0.0, max * 0.04, 0.75]);
   } else {
@@ -1011,6 +1017,7 @@ function setupHud() {
   $('view').add(new Option('Realms', 'realms'));
   $('view').add(new Option('Terrain', 'terrain'));
   Object.entries(VIEWS).filter(([id]) => info.maps.includes(id)).forEach(([id, label]) => $('view').add(new Option(label, id)));
+  Object.entries(YIELD_VIEWS).forEach(([id, label]) => $('view').add(new Option(`${label} (a day)`, `yield:${id}`)));
   $('view').value = view;
   hud();
 }
@@ -1019,12 +1026,33 @@ function fmt(v) {
   return v >= 1000 ? Math.round(v).toLocaleString('en') : (Math.round(v * 10) / 10).toString();
 }
 
+/** Like fmt, with two decimals below 1 (a province's taxes, a day). */
+function fmt2(v) {
+  return Math.abs(v) < 1 ? (Math.round(v * 100) / 100).toString() : fmt(v);
+}
+
 function hud() {
   const me = info.factions[player];
   const acct = st.accounts[player] || {};
   $('day').textContent = `Day ${st.day}`;
   $('funds').textContent = fmt(acct.Funds || 0);
   $('recruits').textContent = fmt(acct.Recruits || 0);
+  const eco = st.economy;
+  const net = (id) => {
+    const r = eco && eco.resources.find((x) => x.id === id);
+    return r ? r.day.reduce((a, x) => a + x.amount, 0) : 0;
+  };
+  for (const [id, el] of [['Funds', 'fundsDay'], ['Recruits', 'recruitsDay']]) {
+    const v = net(id);
+    $(el).textContent = `${v >= 0 ? '+' : '−'}${fmt2(Math.abs(v))}`;
+    $(el).className = `delta ${v < -0.05 ? 'bad' : v > 0.05 ? 'good' : ''}`;
+  }
+  const funds = eco && eco.resources.find((x) => x.id === 'Funds');
+  const warn = [];
+  if (eco && eco.unpaid) warn.push('Your troops are not paid: they lose health and plunder your provinces.');
+  else if (funds && funds.upkeep > funds.income + 0.05) warn.push(`Your troops cost ${fmt(funds.upkeep)} a day and your land pays ${fmt(funds.income)}: the treasury is emptying.`);
+  $('ecoWarn').hidden = !warn.length;
+  $('ecoWarn').textContent = warn.join(' ');
   $('provinces').textContent = st.territory[player];
   const realms = info.factions.filter((f) => f.holds).length;
   $('rank').textContent = st.alive[player] ? `#${st.rank} of ${realms}` : 'fallen';
@@ -1044,6 +1072,40 @@ function hud() {
   players();
   researchPanel();
   legend();
+}
+
+// ---------- treasury ----------
+
+/** Where the realm's funds and recruits came from, and went: on the last day and since the start. */
+function treasury() {
+  let el = $('treasury');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'treasury';
+    el.className = 'overlay';
+    document.body.appendChild(el);
+    el.onclick = (e) => { if (e.target === el) el.hidden = true; };
+  }
+  const eco = st.economy;
+  if (!eco) return;
+  const what = (x) => ({ upkeep: 'troops', event: 'provinces' })[x.kind] || '';
+  const row = (x, perDay) => {
+    const n = !perDay || !x.n ? '' : x.kind === 'decision' ? `<span class="muted">× ${x.n}</span>` : what(x) ? `<span class="muted">${x.n} ${what(x)}</span>` : '';
+    return `<tr><td>${x.label} ${n}</td><td class="num ${x.amount < 0 ? 'bad' : 'good'}">${x.amount > 0 ? '+' : '−'}${fmt2(Math.abs(x.amount))}</td></tr>`;
+  };
+  const table = (rows, perDay) => rows.length ? `<table class="ledger">${rows.map((x) => row(x, perDay)).join('')}
+      <tr class="total"><td>${perDay ? 'Change on the day' : 'Change since the start'}</td><td class="num">${(() => { const t = rows.reduce((a, x) => a + x.amount, 0); return `${t >= 0 ? '+' : '−'}${fmt(Math.abs(t))}`; })()}</td></tr></table>` : '<div class="muted">Nothing yet.</div>';
+  const blocks = eco.resources.map((r) => {
+    const name = r.id === info.research ? `${r.id} (research)` : r.id;
+    const bal = r.upkeep ? `<p class="muted small">Your land gives ${fmt(r.income)} a day; your troops cost ${fmt(r.upkeep)} a day: <b class="${r.income - r.upkeep < 0 ? 'bad' : 'good'}">${r.income - r.upkeep >= 0 ? '+' : '−'}${fmt(Math.abs(r.income - r.upkeep))}</b> before any decision.</p>` : '';
+    return `<div class="res"><h3>${name}</h3>${bal}<div class="cols"><div><h4>Day ${Math.max(0, st.day - 1)}</h4>${table(r.day, true)}</div><div><h4>Since the start</h4>${table(r.game, false)}</div></div></div>`;
+  }).join('');
+  el.innerHTML = `<div class="sheet wide"><button class="close" id="treasuryClose" aria-label="Close">×</button>
+    <h2>Treasury</h2><p class="muted">Every gain and every expense, by where it came from. Taxes and levies follow how happy each province is (see the Happiness view); troops are paid every morning, before anything else.</p>
+    ${eco.unpaid ? '<p class="bad"><b>Your troops are not paid.</b> They lose health every day, and plunder your provinces, whose people grow angry: taxes fall, and below 15 they revolt. Disband troops, levy a war tax, or win land.</p>' : ''}
+    ${blocks}</div>`;
+  el.hidden = false;
+  $('treasuryClose').onclick = () => { el.hidden = true; };
 }
 
 // ---------- research ----------
@@ -1164,7 +1226,18 @@ function players() {
   $('bDay').disabled = mode !== 'solo' && mode !== 'local' && ready.has(player);
 }
 
+const yieldView = () => (view.startsWith('yield:') ? view.slice(6) : null);
+
 function legend() {
+  if (view === 'Happiness') {
+    $('legend').innerHTML = '<div><span>revolt</span><span class="ramp mood"></span><span>happy</span></div><div class="muted small">Taxes and levies follow it: a province at 50 pays in full.</div>';
+    return;
+  }
+  if (yieldView()) {
+    const max = Math.max(0.01, ...(st.yields[yieldView()] || [0]));
+    $('legend').innerHTML = `<div><span>0</span><span class="ramp"></span><span>${fmt(max)}</span></div><div class="muted small">What each province gave its lord yesterday.</div>`;
+    return;
+  }
   if (VIEWS[view]) {
     const max = Math.max(view === 'Fort' ? 3 : 1, ...(st.values || [1]));
     $('legend').innerHTML = `<div><span>0</span><span class="ramp"></span><span>${fmt(max)}</span></div>`;
@@ -1219,6 +1292,9 @@ function card() {
     `<span>Wealth</span><span>${fmt(c.maps.Wealth || 0)}</span>`,
     'Population' in c.maps ? `<span>People (1871)</span><span>${Math.round(c.maps.Population * 1000).toLocaleString('en')}</span>` : '',
     'Elevation' in c.maps ? `<span>Elevation</span><span>${Math.round(c.maps.Elevation)} m</span>` : '',
+    'Happiness' in c.maps ? `<span>Mood</span><span class="${c.maps.Happiness < 15 ? 'bad' : c.maps.Happiness >= 50 ? 'good' : ''}">${mood(c.maps.Happiness)} (${Math.round(c.maps.Happiness)})</span>` : '',
+    Object.keys(c.yields).length ? `<span>Paid yesterday</span><span>${Object.entries(c.yields).map(([r, v]) => `${fmt2(v)} ${r.toLowerCase()}`).join(', ')}</span>` : '',
+    c.upkeep ? `<span>Your troops' upkeep</span><span>${fmt(c.upkeep)} a day</span>` : '',
   ].join('');
   const top = Math.max(40, ...c.presence.map((p) => p.presence));
   const bars = c.presence.sort((a, b) => b.presence - a.presence).map((p) => {
@@ -1248,6 +1324,11 @@ function card() {
   $('cardOptions').innerHTML = '';
   if (!c.options.length) $('cardOptions').innerHTML = '<div class="muted">Nothing you can decide here now.</div>';
   c.options.forEach((o) => $('cardOptions').appendChild(optionButton(o, selected)));
+}
+
+/** A province's mood in words (people.lil: 50 is content, below 15 it revolts). */
+function mood(h) {
+  return h < 15 ? 'in revolt' : h < 30 ? 'angry' : h < 45 ? 'restless' : h < 60 ? 'content' : 'happy';
 }
 
 function news(msg, kind) {
@@ -1310,6 +1391,7 @@ function refresh(animate) {
   drawTroops(animate);
   battles();
   if (selected !== null) card();
+  if ($('treasury') && !$('treasury').hidden) treasury();
 }
 
 function run() {
@@ -1339,6 +1421,8 @@ function gameOver() {
 $('bStart').onclick = start;
 $('bDay').onclick = endDay;
 $('bWeek').onclick = () => days(7);
+$('bTreasury').onclick = treasury;
+document.querySelectorAll('.stats .money').forEach((el) => { el.onclick = treasury; });
 $('bPlay').onclick = run;
 $('cardClose').onclick = () => { selected = null; card(); paint(); };
 $('ordersCancel').onclick = () => choose([]);

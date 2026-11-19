@@ -1,6 +1,6 @@
 name = "Marches"
 description = "Realms raise troops and march them across a land of provinces, rivers, hills and forests: they settle, fortify, fight, and make peace or alliances. The troops come from the era: levies and knights, or militia and hovertanks."
-scripts = ["realms.lil"]
+scripts = ["realms.lil", "people.lil"]
 include = ["eras/$era.toml"]     # [war], [[terrain]] and [[troop]]
 days = 1095
 sample_every = 5
@@ -27,6 +27,11 @@ max = 3
 [[map]]
 id = "Violence"        # where battles were fought
 decay = 0.05
+max = 100
+
+[[map]]
+id = "Happiness"       # of the people, 0 to 100, 50 when content (people.lil)
+init = 50
 max = 100
 
 [[resource]]

@@ -16,8 +16,11 @@
 //!    divided by 1 + the fort map there) to its faction's presence there and takes as much from
 //!    the presence of enemies; control then decides who holds the place. Allies share places and
 //!    never take each other's.
-//! 4. **Supply.** Each faction pays its troops' upkeep; when it cannot, they lose `unpaid`
-//!    health. Troops in friendly places without enemies heal `heal`.
+//! 4. **Supply.** Troops lose `unpaid` health times the share of their upkeep their faction
+//!    could not pay today (it pays first thing, after its income and events and before it
+//!    decides anything: see [`World::pay`]). Troops in friendly places without enemies heal
+//!    `heal`. Nothing caps an army but this: a realm may raise more troops than its land can
+//!    feed, and empty its treasury keeping them.
 
 use std::cmp::Ordering;
 use std::collections::BinaryHeap;
@@ -118,7 +121,42 @@ impl World<'_> {
         });
         self.strength[f][p] += 1.0;
         self.today.raised += 1.0;
+        let k = self.bonus[f][kind].upkeep;
+        for &(r, v) in &self.game.war.troops[kind].upkeep {
+            self.due[f][r] += v * k;
+        }
         id
+    }
+
+    /// Disbands faction `f`'s weakest troop at `p` (the newest of the weakest), if it has one.
+    pub fn disband(&mut self, f: usize, p: usize) -> bool {
+        let Some(i) = (0..self.troops.len())
+            .filter(|&i| self.troops[i].faction == f && self.troops[i].place == p)
+            .min_by(|&a, &b| {
+                let (x, y) = (&self.troops[a], &self.troops[b]);
+                x.hp.total_cmp(&y.hp).then(y.id.cmp(&x.id))
+            })
+        else {
+            return false;
+        };
+        let t = self.troops.remove(i);
+        self.strength[f][p] = (self.strength[f][p] - t.hp / 100.0).max(0.0);
+        self.refresh_due();
+        true
+    }
+
+    /// What each faction's troops cost a day, with its techs.
+    pub(super) fn refresh_due(&mut self) {
+        let war = &self.game.war;
+        for d in &mut self.due {
+            d.iter_mut().for_each(|v| *v = 0.0);
+        }
+        for t in &self.troops {
+            let k = self.bonus[t.faction][t.kind].upkeep;
+            for &(r, v) in &war.troops[t.kind].upkeep {
+                self.due[t.faction][r] += v * k;
+            }
+        }
     }
 
     pub fn troop(&self, id: u32) -> Option<&Troop> {
@@ -487,29 +525,42 @@ impl World<'_> {
         }
     }
 
-    fn supply(&mut self) {
-        let war = &self.game.war;
+    /// Each faction pays its troops' upkeep, as much of it as it has (the share it could not
+    /// pay, for the worst of its resources, is kept for [`World::supply`]).
+    pub(super) fn pay(&mut self) {
         let nf = self.factions.len();
         let nr = self.game.rules.resources.len();
-        let mut due = vec![vec![0.0; nr]; nf];
+        self.refresh_due();
+        let mut army = vec![0u32; nf];
         for t in &self.troops {
-            let k = self.bonus[t.faction][t.kind].upkeep;
-            for &(r, v) in &war.troops[t.kind].upkeep {
-                due[t.faction][r] += v * k;
-            }
+            army[t.faction] += 1;
         }
-        let mut unpaid = vec![false; nf];
-        for f in 0..nf {
+        // The share of the upkeep each faction could not pay (the worst of its resources).
+        self.short.iter_mut().for_each(|s| *s = 0.0);
+        self.source = super::SRC_UPKEEP;
+        for (f, &n) in army.iter().enumerate() {
             let acct = self.factions[f].account;
-            let account = &mut self.gb.accounts[acct];
-            if account.iter().zip(&due[f]).all(|(have, d)| *have >= *d) {
-                for (have, d) in account.iter_mut().zip(&due[f]) {
-                    *have -= d;
+            for r in 0..nr {
+                let d = self.due[f][r];
+                if d <= 0.0 {
+                    continue;
                 }
-            } else {
-                unpaid[f] = true;
+                let have = &mut self.gb.accounts[acct][r];
+                let paid = d.min(have.max(0.0));
+                *have -= paid;
+                self.short[f] = self.short[f].max((d - paid) / d);
+                self.book(f, r, -paid, None, n);
+            }
+            self.unpaid[f] = self.short[f] > 0.0;
+            if self.unpaid[f] {
+                self.today.unpaid += 1.0;
             }
         }
+        self.source = super::SRC_OTHER;
+    }
+
+    fn supply(&mut self) {
+        let war = &self.game.war;
         for i in 0..self.troops.len() {
             let (f, p) = (self.troops[i].faction, self.troops[i].place);
             let home = self.owner[p].is_some_and(|o| self.relation[f][o] == Relation::Ally);
@@ -518,7 +569,7 @@ impl World<'_> {
             } else {
                 0.0
             };
-            let lose = if unpaid[f] { war.unpaid } else { 0.0 };
+            let lose = war.unpaid * self.short[f];
             let t = &mut self.troops[i];
             t.hp = (t.hp + heal - lose).min(100.0);
         }

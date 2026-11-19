@@ -16,10 +16,12 @@
   <div class="realm"><i id="realmColor"></i><b id="realmName"></b><span id="rank" class="muted"></span></div>
   <div class="day"><span id="day"></span><span class="muted"> / <span id="days"></span></span></div>
   <div class="stats">
-    <div><img src="icons/funds.jpg" alt=""><span class="lbl">Funds</span><b id="funds"></b></div>
-    <div><img src="icons/recruits.jpg" alt=""><span class="lbl">Recruits</span><b id="recruits"></b></div>
+    <div class="money" title="Where it comes from: click"><img src="icons/funds.jpg" alt=""><span class="lbl">Funds</span><b id="funds"></b><span id="fundsDay" class="delta"></span></div>
+    <div class="money" title="Where they come from: click"><img src="icons/recruits.jpg" alt=""><span class="lbl">Recruits</span><b id="recruits"></b><span id="recruitsDay" class="delta"></span></div>
     <div><img src="icons/provinces.jpg" alt=""><span class="lbl">Provinces</span><b id="provinces"></b></div>
   </div>
+  <div id="ecoWarn" class="warn" hidden></div>
+  <button id="bTreasury" class="link">Treasury: where the money comes from</button>
   <div class="actions"><span class="lbl">Decisions today</span><span id="moves"></span></div>
   <div id="army"></div>
   <div class="buttons">
@@ -89,7 +91,8 @@
       <li><b>Click one of your troops</b> (on the map, or in a province's card), then <b>click where it should go</b>. It takes the quickest way: hills, forests and mountains are slow, horses and tanks cannot climb everywhere, and the river can only be crossed at bridges. You can give orders as often as you like; decisions are limited to a few a day.</li>
       <li>Troops that meet enemies <b>stop and fight</b>, every day, until one side is gone: each troop hits the enemy it is best against. Defenders are helped by hills, forests, castles and their own land.</li>
       <li>A troop standing in a province with no enemy troops <b>occupies</b> it: day by day its realm's hold grows and the old holder's fades, and the province changes hands. Heavy troops take places fastest; castles slow them down.</li>
-      <li>Every province pays funds and gives recruits each day; troops cost funds to keep. A realm that cannot pay sees its troops melt away.</li>
+      <li>Every province pays funds and gives recruits each day, as far as its people are content; the <b>Treasury</b> shows where every coin came from and went. Troops cost funds every day, paid first thing in the morning. There is no limit to an army but its cost: raise more than your land can feed and the treasury empties, unpaid troops lose health and plunder your own provinces, taxes fall, and angry provinces revolt.</li>
+      <li><b>The people</b> (the Happiness view): battles, troops quartered on them, levies and war taxes make them unhappy, and so does a very big realm; left alone they calm down. Feed the people where they are angry, and disband troops you cannot pay.</li>
       <li><b>End the day</b> (space), or let the days run. The war lasts three years: hold as much land as you can.</li>
     </ol>
     <button class="primary" id="bHelpClose">To the field</button>

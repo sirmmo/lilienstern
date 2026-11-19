@@ -189,7 +189,7 @@ home_defense = 1        # stars for troops in places their faction or an ally ho
 fort_map = "Fort"       # a map whose value adds stars, and slows occupation
 luck = 10               # a random 0..luck added to every hit
 heal = 3                # health regained per day in friendly places without enemies
-unpaid = 4              # health lost per day when the faction cannot pay the upkeep
+unpaid = 4              # health lost per day when the faction pays none of the upkeep
 violence = 0.2          # added to the violence map per point of damage
 relation = "war"        # between factions of different teams at the start: war or peace
 
@@ -217,6 +217,10 @@ description = "..."
 Places with no matching terrain (and every place, when no terrain is declared) cost 1 to enter
 and give no stars. Troops have health from 0 to 100; strength counts a full troop as 1.
 
+**Upkeep** is paid every morning, after income and events and before any decision: each
+faction pays all its troops' upkeep, as much of it as it has. Nothing else limits an army: a
+faction may raise more troops than its income can feed, and empty its treasury keeping them.
+
 **A day of troops** (after the decisions, before control):
 
 1. *March.* Troops with orders move along their route, all at the same time, a border at a
@@ -233,8 +237,9 @@ and give no stars. Troops have health from 0 to 100; strength counts a full troo
    by 1 + the fort map) to its faction's presence there, and takes as much from the presence of
    every faction at war with it; control then decides who holds the place. Troops do not
    occupy places held by allies or factions at peace.
-4. *Supply.* Each faction pays its troops' upkeep, or they all lose `unpaid`; troops in
-   friendly places with no enemies heal `heal`.
+4. *Supply.* Troops lose `unpaid` times the share of the morning's upkeep their faction could
+   not pay (for the worst of its resources); troops in friendly places with no enemies heal
+   `heal`.
 
 **Relations.** Every pair of factions is at `war`, at `peace` (no fighting; neither enters the
 other's places) or `ally` (they share places, never fight, never take each other's places).
@@ -356,7 +361,20 @@ event shock
 end
 ```
 
-In a place event, the faction is the place's holder (none if nobody holds it).
+In a place event, the faction is the place's holder (none if nobody holds it). `label Taxes`
+names the event where a player sees what it gave or took (the treasury); the default is its
+name with spaces.
+
+### The ledger
+
+Every change to a faction's global resources is booked under where it came from: its
+`income`, each event (by its label), each decision (its costs and effects, by its label),
+research, troop upkeep, and "other" for what no script names (GlassBox units and rules), with
+how many places, troops or decisions made each amount. `World::yesterday` is the last
+finished day (a player's decisions count in the day they were taken), `World::ledger_total`
+the whole game, and `World::yields[resource][place]` what each place's events gave its holder
+on the last day. Scripts read it through `income`, `upkeep` and `balance` below; the browser's
+treasury shows it.
 
 ### modifier
 
@@ -394,6 +412,10 @@ always read the target.
 | `relation war\|peace\|ally` | the faction's relation with the place's holder (false if nobody, or the faction itself, holds it) |
 | `tech T` | the faction knows tech T |
 | `techs <cmp> n` | how many techs it knows |
+| `income R <cmp> n` | what the faction's land gave of resource R on the last day (its `income` and every event) |
+| `upkeep R <cmp> n` | what its troops cost of R a day |
+| `balance R <cmp> n` | income less upkeep |
+| `unpaid <cmp> n` | 1 if it could not pay all its troops' upkeep (today, or on the last day before they are paid) |
 
 `<cmp>` is `atLeast`, `atMost`, `greater`, `less` or `is`.
 
@@ -407,7 +429,8 @@ always read the target.
 | `all presence add\|mul\|set n` | every gang's presence at the place |
 | `turf add\|mul\|set n` | the faction's presence in every place it holds |
 | `global R add\|mul\|set n` | the faction's resource |
-| `global R add\|mul\|set map M k` | the faction's resource, by k x the map at the place (income that follows the land) |
+| `global R add\|mul\|set map M k [times map M2 k2]...` | the faction's resource, by k x the map at the place (income that follows the land), times k2 x M2 for each `times` (`global Funds add map Population 0.0017 times map Happiness 0.02`) |
+| `global R add\|mul\|set n times map M k...` | n times k x M at the place |
 | `modifier NAME days` | |
 | `build U` | a unit of the faction at the place |
 | `seize` | other factions' units at the place become the faction's |
@@ -416,6 +439,7 @@ always read the target.
 | `raise T` | a troop of kind T for the faction at the place; in a decision, the troop's cost is added to the decision's |
 | `march [n\|all]` | sends up to n (default 1) of the faction's troops that have no orders and are not fighting to the place, those that get there soonest first |
 | `relation war\|peace\|ally` | sets the relation between the faction and the place's holder |
+| `disband` | removes the faction's weakest troop at the place (its upkeep with it) |
 
 ### Weights (`weight ...`)
 
@@ -428,7 +452,8 @@ always read the target.
 | `weight unowned k` | k if nobody holds the target |
 | `weight units [U] k` | k x the units there |
 | `weight global R k` | k x the faction's resource (careful: unbounded quantities end up outweighing everything) |
-| `weight troops\|foes\|threat\|army\|idle\|techs k` | k x the count, as in the conditions |
+| `weight troops\|foes\|threat\|army\|idle\|techs\|unpaid k` | k x the count, as in the conditions |
+| `weight income\|upkeep\|balance R k` | k x the faction's economy in R, as in the conditions (`weight balance Funds 0.25`: an AI that minds its means) |
 
 A decision whose score is not positive is not taken.
 
@@ -443,5 +468,6 @@ share of places that were ever hotspots, and how often each decision was taken
 
 Games with troops add `battles` (places where troops fought, per day), `losses` (health lost
 in battle), `troops` (alive) to the series, and `battles`, `losses`, `raised`, `destroyed`,
-`troops` and each holder's `territory.<faction>` to the summary; games with techs add `learnt`
+`troops`, `unpaid` (faction-days with troops not fully paid) and each holder's
+`territory.<faction>` to the summary; games with techs add `learnt`
 and each faction's `techs.<faction>`.

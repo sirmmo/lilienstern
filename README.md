@@ -87,6 +87,14 @@ plains, forests, hills, mountains and a river crossed only at its bridges.
 * **Realms** (`games/marches/realms.lil`) tax their provinces, settle empty land, govern,
   fortify, raise troops, send them to attack, take and defend, and make war, peace and
   alliances. Troops at war fight where they meet; troops alone in a province occupy it.
+  Armies have no cap but their cost: upkeep is paid every morning, and a realm that keeps more
+  troops than its land can feed empties its treasury.
+* **The people** (`games/marches/people.lil`): each province's happiness, a map. Taxes and
+  levies follow it; battles, quartered troops, levies, war taxes and unpaid troops lower it;
+  below 15 a province revolts. Rulers can feed the people, levy a war tax or disband troops.
+* **A ledger** books every gain and expense under where it came from (each tax, levy,
+  decision, the upkeep), which the browser's treasury shows and scripts read as `income`,
+  `upkeep` and `balance`.
 * `--set teams=a,a` starts the first two realms allied; `--set era=future` changes the troops
   and nothing else.
 

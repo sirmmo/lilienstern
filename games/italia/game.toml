@@ -1,6 +1,6 @@
 name = "Italia"
 description = "Noble families fight over Italy, as cut by ISTAT's units of 1871 (the old provinces of the Italian states), raising troops and marching them across real mountains and plains."
-scripts = ["../marches/realms.lil", "italia.lil"]
+scripts = ["../marches/realms.lil", "../marches/people.lil", "italia.lil"]
 include = ["../marches/eras/$era.toml"]     # troops and terrain, shared with Marches
 days = $days
 sample_every = 5
@@ -37,6 +37,11 @@ max = 3
 [[map]]
 id = "Violence"
 decay = 0.05
+max = 100
+
+[[map]]
+id = "Happiness"            # of the people, 0 to 100, 50 when content (../marches/people.lil)
+init = 50
 max = 100
 
 [[resource]]

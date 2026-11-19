@@ -1,0 +1,117 @@
+# The people: how happy each province is with whoever rules it, the map Happiness, from 0 to
+# 100. Taxes and levies are paid in proportion to it (realms.lil: times Happiness / 50), so an
+# unhappy land pays less, and below $revolt_below it rises against its lord. Every number is a
+# parameter (params.toml).
+#
+# Every day a province's mood moves a little towards 50 (it keeps $mood_keep of what it was and
+# gains $mood_base): left alone it settles at content. Everything below pushes it every day, so
+# a lasting cause settles it lower: each 0.1 a day is about 5 points lower.
+#
+# What makes people unhappy: battles, troops quartered on them, troops raised from them, war
+# taxes, a court too far away in a big realm, and above all troops nobody pays, who take what
+# they need. A realm can keep a bigger army than its land can feed, for a while: then its
+# treasury empties, its troops plunder its own provinces, taxes dry up, and provinces revolt.
+
+event mood                      # back towards 50, slowly
+    label Mood
+    scope place
+    do map Happiness mul $mood_keep
+    do map Happiness add $mood_base
+end
+
+event big_realm                 # the court is far away, the governors greedy
+    label A distant court
+    scope place
+    for realm
+    if territory greater $big_realm
+    do map Happiness add -$distant_court
+end
+
+event huge_realm
+    label A very distant court
+    scope place
+    for realm
+    if territory greater $huge_realm
+    do map Happiness add -$distant_court
+end
+
+event war_weariness             # battles fought here
+    label War weariness
+    scope place
+    if map Violence greater 2
+    do map Happiness add -$weariness
+end
+
+event billets                   # the realm's troops, quartered here, eat what the farms grow
+    label Billets
+    scope place
+    for realm
+    if troops greater 0.5
+    do map Happiness add -$billets
+end
+
+event garrison                  # ... and a big garrison eats more
+    label Garrison
+    scope place
+    for realm
+    if troops atLeast 4
+    do map Happiness add -$garrison
+end
+
+event plunder                   # troops nobody pays take what they need, everywhere
+    label Plunder
+    scope place
+    for realm
+    if unpaid is 1
+    do map Happiness add -$plunder
+end
+
+event revolt                    # the province rises: the realm's hold on it falls
+    label Revolt
+    scope place
+    for realm
+    if map Happiness less $revolt_below
+    do presence add -$revolt
+    log Revolts
+end
+
+# ---- What a ruler can do about it ----
+
+decision feast
+    label Feed the people
+    for realm
+    target owned
+    if map Happiness less 45
+    cost Funds $feast_cost
+    do map Happiness add $feast radius 1
+    weight 1.2
+    weight map Happiness -0.03
+    weight map Wealth 0.005
+end
+
+decision war_tax
+    label Levy a war tax
+    for realm
+    target owned
+    if map Happiness greater 35
+    if foes is 0
+    do global Funds add map Wealth $war_tax
+    do map Happiness add -$war_tax_anger
+    weight balance Funds -0.1
+    weight unpaid 1
+    weight map Wealth 0.002
+    every 3
+end
+
+decision disband
+    label Disband a troop
+    for realm
+    target any
+    if troops greater 0
+    if foes is 0
+    do disband
+    do global Recruits add $disband_recruits
+    weight balance Funds -0.15
+    weight unpaid 1.5
+    weight threat -2
+end

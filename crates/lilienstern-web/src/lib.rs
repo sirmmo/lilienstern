@@ -315,7 +315,91 @@ fn state(w: &World, map: Option<usize>, me: Option<usize>) -> Value {
         "techs_known": w.known.iter().map(|k| k.iter().filter(|&&x| x).count()).collect::<Vec<_>>(),
         "battles": s.get("battles"),
         "destroyed": s.get("destroyed"),
+        "economy": me.map(|f| economy(w, f)),
+        "yields": yields(w),
     })
+}
+
+fn round2(v: f64) -> f64 {
+    (v * 100.0).round() / 100.0
+}
+
+/// The global resources, the ones a faction's ledger tracks.
+fn globals(w: &World) -> Vec<usize> {
+    (0..w.game.rules.resources.len())
+        .filter(|&r| w.game.rules.resources[r].scope == lilienstern::glassbox::Scope::Global)
+        .collect()
+}
+
+/// Where faction `f`'s resources came from and went: on the last day and in the whole game, by
+/// source (sources with the same label are added up), with its income, upkeep and balance a day.
+fn economy(w: &World, f: usize) -> Value {
+    let mut names = w.source_names();
+    let ns = names.len();
+    // A decision that raises a troop is named after the troop, as on the page's buttons.
+    let first = ns - w.game.script.decisions.len();
+    for (d, def) in w.game.script.decisions.iter().enumerate() {
+        if let Some(t) = def.effects.iter().find_map(|e| match e {
+            lilienstern::script::Effect::Raise { troop } => Some(*troop),
+            _ => None,
+        }) {
+            names[first + d].1 = format!("Raise {}", w.game.war.troops[t].name);
+        }
+    }
+    let rows = |ledger: &lilienstern::world::Ledger, r: usize| {
+        let mut by: Vec<(&str, String, f64, u32)> = Vec::new();
+        for (s, (kind, label)) in names.iter().enumerate() {
+            let (a, n) = (ledger.amount[f][r * ns + s], ledger.count[f][r * ns + s]);
+            if a.abs() < 1e-9 {
+                continue;
+            }
+            match by.iter_mut().find(|x| x.0 == *kind && x.1 == *label) {
+                Some(x) => {
+                    x.2 += a;
+                    x.3 += n;
+                }
+                None => by.push((kind, label.clone(), a, n)),
+            }
+        }
+        by.sort_by(|a, b| b.2.total_cmp(&a.2));
+        by.into_iter()
+            .map(|(kind, label, a, n)| json!({ "kind": kind, "label": label, "amount": round2(a), "n": n }))
+            .collect::<Vec<_>>()
+    };
+    let resources: Vec<Value> = globals(w)
+        .into_iter()
+        .filter_map(|r| {
+            let day = rows(&w.yesterday, r);
+            let game = rows(&w.ledger_total, r);
+            if game.is_empty() && day.is_empty() {
+                return None;
+            }
+            Some(json!({
+                "id": w.game.rules.resources[r].id,
+                "income": round2(w.economy(lilienstern::script::Econ::Income, f, r)),
+                "upkeep": round2(w.due[f][r]),
+                "day": day,
+                "game": game,
+            }))
+        })
+        .collect();
+    json!({ "unpaid": w.unpaid[f], "resources": resources })
+}
+
+/// What each place's events gave its holder on the last day, by global resource.
+fn yields(w: &World) -> Value {
+    Value::Object(
+        globals(w)
+            .into_iter()
+            .filter(|&r| w.yields[r].iter().any(|&v| v != 0.0))
+            .map(|r| {
+                (
+                    w.game.rules.resources[r].id.clone(),
+                    json!(w.yields[r].iter().map(|&v| round2(v)).collect::<Vec<_>>()),
+                )
+            })
+            .collect(),
+    )
 }
 
 /// Places where troops of factions at war share the place: battles go on there.
@@ -391,6 +475,12 @@ fn place(w: &mut World, p: usize, me: Option<usize>) -> Value {
         "units": units,
         "maps": maps,
         "population": pl.fields.get("population").map(|v| v.round()),
+        "yields": globals(w).into_iter().filter(|&r| w.yields[r][p] != 0.0).map(|r| (g.rules.resources[r].id.clone(), json!(round2(w.yields[r][p])))).collect::<serde_json::Map<_, _>>(),
+        // What the troops of `me` here cost a day (all resources).
+        "upkeep": w.troops.iter().filter(|t| t.place == p && Some(t.faction) == me).map(|t| {
+            let k = w.bonus(t.faction, t.kind).upkeep;
+            g.war.troops[t.kind].upkeep.iter().map(|&(_, v)| v * k).sum::<f64>()
+        }).sum::<f64>(),
     });
     if let Some(f) = me {
         out["options"] = offers(w, f, Some(p));
@@ -448,6 +538,7 @@ mod tests {
             "params.toml",
             "game.toml",
             "realms.lil",
+            "people.lil",
             "eras/medieval.toml",
             "eras/medieval.lil",
             "eras/future.toml",
@@ -512,6 +603,31 @@ mod tests {
             .clone();
         assert!(handle(&json!({ "op": "order", "troop": theirs, "to": to })).is_err());
         let later = handle(&json!({ "op": "step", "days": days + 1 })).unwrap();
+        // Where the money comes from: taxes by province, upkeep by troop.
+        let funds = later["economy"]["resources"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|r| r["id"] == "Funds")
+            .unwrap()
+            .clone();
+        let row = |label: &str| {
+            funds["day"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|x| x["label"] == label)
+                .cloned()
+        };
+        let taxes = row("Taxes").unwrap();
+        assert!(taxes["amount"].as_f64().unwrap() > 0.0);
+        // Provinces taxed in the morning (the day's fighting may change how many are held).
+        let held_now = later["territory"][1].as_i64().unwrap();
+        assert!((taxes["n"].as_i64().unwrap() - held_now).abs() <= 2);
+        assert!(row("Troop upkeep").unwrap()["amount"].as_f64().unwrap() < 0.0);
+        assert!(funds["upkeep"].as_f64().unwrap() > 0.0);
+        let paid = later["yields"]["Funds"].as_array().unwrap();
+        assert_eq!(paid.len() as u64, n);
         if let Some(t) = later["troops"]
             .as_array()
             .unwrap()

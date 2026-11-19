@@ -1,34 +1,41 @@
 # Marches: what realms do. The troops they raise (light, ranged, heavy, fast) are declared by
 # the era (eras/medieval.toml, eras/future.toml), so the same decisions raise levies or militia.
+# How happy the provinces are, and what that does, is in people.lil.
 
-# ---- The economy: every province pays and gives men ----
+# ---- The economy: every province pays and gives men, as far as its people are content ----
+# (times Happiness / 50: a content province pays in full, an angry one little)
 
 event taxes
+    label Taxes
     scope place
     for realm
-    do global Funds add $tax
+    do global Funds add $tax times map Happiness 0.02
 end
 
 event rich_taxes
+    label Taxes on the rich
     scope place
     for realm
     if map Wealth greater 50
-    do global Funds add $rich_tax
+    do global Funds add $rich_tax times map Happiness 0.02
 end
 
 event muster
+    label Levies
     scope place
     for realm
-    do global Recruits add $recruits
+    do global Recruits add $recruits times map Happiness 0.02
 end
 
 event scholars                  # learning, for research (the era's techs)
+    label Scholars
     scope place
     for realm
     do global Learning add $learning
 end
 
 event universities
+    label Universities
     scope place
     for realm
     if tech universities
@@ -75,16 +82,23 @@ decision fortify
 end
 
 # ---- Troops ----
+# No cap on an army: only what it costs. Raising a troop costs funds and recruits, and its
+# upkeep is paid every day (eras/*.toml). The AI minds its balance (income less upkeep) and the
+# size of its army, and raises beyond them only when threatened; a person may raise as many as
+# they can pay for.
 
 decision raise_light
     label Raise light troops
     for realm
     target owned
     if foes is 0
-    if army less $max_army
     do raise light
+    do map Happiness add -$conscription
     weight 0.5
     weight threat 0.4
+    weight balance Funds $thrift
+    weight army -$army_weight
+    weight map Happiness 0.004
 end
 
 decision raise_ranged
@@ -92,10 +106,13 @@ decision raise_ranged
     for realm
     target owned
     if foes is 0
-    if army less $max_army
     do raise ranged
+    do map Happiness add -$conscription
     weight 0.7
     weight threat 0.3
+    weight balance Funds $thrift
+    weight army -$army_weight
+    weight map Happiness 0.004
 end
 
 decision raise_heavy
@@ -103,10 +120,13 @@ decision raise_heavy
     for realm
     target owned
     if foes is 0
-    if army less $max_army
     do raise heavy
+    do map Happiness add -$conscription
     weight 1.6
     weight threat 0.6
+    weight balance Funds $thrift
+    weight army -$army_weight
+    weight map Happiness 0.004
 end
 
 decision raise_fast
@@ -114,10 +134,13 @@ decision raise_fast
     for realm
     target owned
     if foes is 0
-    if army less $max_army
     do raise fast
+    do map Happiness add -$conscription
     weight 1.4
     weight threat 0.3
+    weight balance Funds $thrift
+    weight army -$army_weight
+    weight map Happiness 0.004
 end
 
 decision attack

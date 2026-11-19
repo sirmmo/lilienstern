@@ -139,7 +139,7 @@ def main():
     shutil.copy(a.wasm, os.path.join(play, "lilienstern.wasm"))
     game = os.path.join(play, "game")
     os.makedirs(os.path.join(game, "eras"))
-    for f in ["params.toml", "game.toml", "realms.lil", "eras/medieval.toml", "eras/medieval.lil", "eras/future.toml"]:
+    for f in ["params.toml", "game.toml", "realms.lil", "people.lil", "eras/medieval.toml", "eras/medieval.lil", "eras/future.toml"]:
         shutil.copy(os.path.join(ROOT, "games", "marches", f), os.path.join(game, f))
 
     # Italia: the Marches page with Italia's start screen, its files and Marches' shared ones.
@@ -153,7 +153,7 @@ def main():
               "maps/italia-cities.geojson"]:
         os.makedirs(os.path.dirname(os.path.join(game, f)), exist_ok=True)
         shutil.copy(os.path.join(ROOT, "games", "italia", f), os.path.join(game, f))
-    for f in ["realms.lil", "eras/medieval.toml", "eras/medieval.lil", "eras/future.toml"]:
+    for f in ["realms.lil", "people.lil", "eras/medieval.toml", "eras/medieval.lil", "eras/future.toml"]:
         os.makedirs(os.path.dirname(os.path.join(game, "marches", f)), exist_ok=True)
         shutil.copy(os.path.join(ROOT, "games", "marches", f), os.path.join(game, "marches", f))
     with open(os.path.join(out, ".nojekyll"), "w"):
