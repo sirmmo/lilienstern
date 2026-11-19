@@ -179,12 +179,12 @@ impl<'g> World<'g> {
         let mut gb = State::new(rules, n, nf + 1);
         for (m, (init, scale)) in game.map_init.iter().enumerate() {
             let def = &rules.maps[m];
-            for p in 0..n {
+            for (p, slot) in gb.maps[m].iter_mut().enumerate() {
                 let v = match init {
                     MapInit::Value(v) => *v,
                     MapInit::Field(f) => city.field(p, f),
                 };
-                gb.maps[m][p] = (v * scale).clamp(def.min, def.max);
+                *slot = (v * scale).clamp(def.min, def.max);
             }
         }
         let factions: Vec<Faction> = (0..nf)
