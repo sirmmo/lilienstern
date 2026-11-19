@@ -107,4 +107,5 @@ See [the experiment](docs/EXPERIMENTS.md#marches-experiment) on alliances and er
 
 ## License
 
-GPL-3.0-or-later.
+GPL-3.0-or-later, except the icons in `web/marches/icons`, which come from commercial icon
+packs and are licensed separately (see [their README](web/marches/icons/README.md)).

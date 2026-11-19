@@ -16,9 +16,9 @@
   <div class="realm"><i id="realmColor"></i><b id="realmName"></b><span id="rank" class="muted"></span></div>
   <div class="day"><span id="day"></span><span class="muted"> / <span id="days"></span></span></div>
   <div class="stats">
-    <div><span class="lbl">Funds</span><b id="funds"></b></div>
-    <div><span class="lbl">Recruits</span><b id="recruits"></b></div>
-    <div><span class="lbl">Provinces</span><b id="provinces"></b></div>
+    <div><img src="icons/funds.jpg" alt=""><span class="lbl">Funds</span><b id="funds"></b></div>
+    <div><img src="icons/recruits.jpg" alt=""><span class="lbl">Recruits</span><b id="recruits"></b></div>
+    <div><img src="icons/provinces.jpg" alt=""><span class="lbl">Provinces</span><b id="provinces"></b></div>
   </div>
   <div class="actions"><span class="lbl">Decisions today</span><span id="moves"></span></div>
   <div id="army"></div>
@@ -60,8 +60,10 @@
       <a href="../">Lilienstern</a> engine runs the others, in your browser.</p>
     <h3>Era</h3>
     <div class="choices" id="eraChoice">
-      <label><input type="radio" name="era" value="medieval" checked> Medieval <span class="muted">(levies, archers, men-at-arms, knights)</span></label>
-      <label><input type="radio" name="era" value="future"> Future <span class="muted">(militia, drone wings, battle mechs, hovertanks)</span></label>
+      <label><input type="radio" name="era" value="medieval" checked> Medieval <span class="muted">(levies, archers, men-at-arms, knights)</span>
+        <span class="era-icons"><img src="icons/medieval-light.jpg" alt=""><img src="icons/medieval-ranged.jpg" alt=""><img src="icons/medieval-heavy.jpg" alt=""><img src="icons/medieval-fast.jpg" alt=""></span></label>
+      <label><input type="radio" name="era" value="future"> Future <span class="muted">(militia, drone wings, battle mechs, hovertanks)</span>
+        <span class="era-icons"><img src="icons/future-light.jpg" alt=""><img src="icons/future-ranged.jpg" alt=""><img src="icons/future-heavy.jpg" alt=""><img src="icons/future-fast.jpg" alt=""></span></label>
     </div>
     <p class="muted small">Same engine, same land, same decisions: only the troop and terrain files differ.</p>
     <h3>Land</h3>
@@ -75,6 +77,7 @@
     <div class="seed">Seed <input id="seed" type="number" min="1" step="1"></div>
     <button id="bStart" class="primary big" disabled>Start</button>
     <p id="startError" class="error"></p>
+    <p class="muted small">Icons: painted icon packs (licensed separately, not under the GPL; see <a href="https://github.com/sirmmo/lilienstern/tree/main/web/marches/icons">icons/README</a>).</p>
   </div>
 </div>
 

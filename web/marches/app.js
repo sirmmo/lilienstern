@@ -4,6 +4,8 @@
 const GAME_FILES = ['params.toml', 'game.toml', 'realms.lil', 'eras/medieval.toml', 'eras/future.toml'];
 const VIEWS = { Wealth: 'Wealth', Fort: 'Castles', Violence: 'Battles' };
 const TWEEN_MS = 450;
+// Icons (web/marches/icons, see the README there): troops by era and id, decisions by name.
+const DECISION_ICONS = ['settle', 'govern', 'fortify', 'defend', 'attack', 'occupy', 'make_peace', 'declare_war', 'ally'];
 
 const $ = (id) => document.getElementById(id);
 const texts = {};
@@ -199,6 +201,27 @@ function paint() {
   routes();
 }
 
+// ---------- icons ----------
+
+const troopIcon = (k) => `icons/${era}-${info.troopKinds[k].id}.jpg`;
+
+function decisionIcon(name) {
+  if (name.startsWith('raise_')) {
+    const k = info.troopKinds.findIndex((t) => `raise_${t.id}` === name);
+    return k >= 0 ? troopIcon(k) : null;
+  }
+  return DECISION_ICONS.includes(name) ? `icons/${name}.jpg` : null;
+}
+
+const img = (src, cls = 'ico') => (src ? `<img class="${cls}" src="${src}" alt="">` : '');
+
+/** The kind that stands for a stack: the most common, the dearest on a tie. */
+function leadKind(kinds) {
+  const n = {};
+  kinds.forEach((k) => { n[k] = (n[k] || 0) + 1; });
+  return +Object.keys(n).sort((a, b) => n[b] - n[a] || b - a)[0];
+}
+
 // ---------- troops on the map ----------
 
 function lerp(a, b, s) {
@@ -234,12 +257,13 @@ function drawTroops(animate) {
     }
     m.stack = s;
     const kinds = s.list.map((t) => t.k);
-    const one = kinds.every((k) => k === kinds[0]);
     const hp = s.list.reduce((a, t) => a + t.hp, 0) / s.list.length;
     const mine = s.f === player;
     m.el.className = 'troop' + (mine ? ' mine' : '') + (mine && s.list.some((t) => chosen.includes(t.id)) ? ' selected' : '');
-    m.el.style.background = info.factions[s.f].color;
-    m.el.innerHTML = `${one ? info.troopKinds[kinds[0]].icon : '✦'}${s.list.length > 1 ? `<small>${s.list.length}</small>` : ''}<span class="hpbar"><i style="width:${hp}%"></i></span>`;
+    m.el.style.borderColor = info.factions[s.f].color;
+    m.el.style.zIndex = mine ? 2 : 1; // your troops stay clickable where stacks overlap
+    m.el.style.backgroundImage = `url(${troopIcon(leadKind(kinds))})`;
+    m.el.innerHTML = `${s.list.length > 1 ? `<small style="background:${info.factions[s.f].color}">${s.list.length}</small>` : ''}<span class="hpbar"><i style="width:${hp}%"></i></span>`;
     m.el.title = `${info.factions[s.f].name}: ${summary(s.list)}`;
     const from = animate ? (m.at || lastPos.get(s.id) || s.at) : s.at;
     if (!m.at) m.marker.setLngLat(from).addTo(map);
@@ -395,7 +419,7 @@ function hud() {
   const idle = mine.filter((t) => !t.path || !t.path.length);
   const counts = info.troopKinds.map((k, i) => ({ k, n: mine.filter((t) => t.k === i).length })).filter((x) => x.n);
   $('army').innerHTML = `<span class="lbl">Your troops: ${mine.length} (${idle.length} without orders)</span>`
-    + `<div class="kinds">${counts.map((x) => `<span title="${x.k.description}">${x.k.icon} ${x.k.name} × ${x.n}</span>`).join('')}</div>`;
+    + `<div class="kinds">${counts.map((x) => `<span title="${x.k.description}">${img(troopIcon(info.troopKinds.indexOf(x.k)))}${x.k.name} × ${x.n}</span>`).join('')}</div>`;
   if (idle.length) {
     const b = document.createElement('button');
     b.textContent = 'Select the troops without orders';
@@ -432,7 +456,8 @@ function optionButton(o, place) {
   const row = document.createElement('div');
   row.className = 'opt';
   const b = document.createElement('button');
-  b.textContent = o.raise ? `Raise ${o.raise}` : o.label;
+  b.innerHTML = img(decisionIcon(o.name));
+  b.append(o.raise ? `Raise ${o.raise}` : o.label);
   b.disabled = !o.affordable || busy;
   b.onclick = () => take(o, place);
   row.appendChild(b);
@@ -468,7 +493,7 @@ function card() {
   c.troops.forEach((t) => {
     const k = info.troopKinds[t.kind];
     const row = document.createElement('div');
-    row.innerHTML = `<i class="chip" style="background:${info.factions[t.faction].color}"></i>${k.icon} ${k.name}<span class="hp"><i style="width:${t.hp}%"></i></span>`;
+    row.innerHTML = `<i class="chip" style="background:${info.factions[t.faction].color}"></i>${img(troopIcon(t.kind))}${k.name}<span class="hp"><i style="width:${t.hp}%"></i></span>`;
     const where = document.createElement('span');
     where.className = 'where';
     where.textContent = t.moving ? `→ ${placeName(t.to)}` : '';
@@ -572,7 +597,8 @@ function gameOver() {
   const place = rows.findIndex((r) => r.i === player) + 1;
   const all = st.territory[player] === st.owner.length;
   $('overTitle').textContent = all ? 'The land is yours' : !st.alive[player] ? 'Your realm has fallen' : 'Three years later';
-  $('overText').innerHTML = `<p>On day ${st.day} you are <b>#${place}</b> of ${rows.length}, holding <b>${st.territory[player]}</b> provinces.</p>`
+  const cup = all || place === 1 ? 'cup-gold' : st.alive[player] ? 'cup-laurel' : 'cup-dark';
+  $('overText').innerHTML = `<img class="cup" src="icons/${cup}.jpg" alt=""><p>On day ${st.day} you are <b>#${place}</b> of ${rows.length}, holding <b>${st.territory[player]}</b> provinces.</p>`
     + rows.map((r) => `<div><i class="chip" style="background:${r.f.color}"></i> ${r.f.name}: ${r.n}</div>`).join('')
     + `<p class="muted">Battles fought: ${fmt(st.battles || 0)}; troops destroyed: ${fmt(st.destroyed || 0)}.</p>`;
   $('over').hidden = false;
