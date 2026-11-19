@@ -154,29 +154,30 @@ quarter of the city after two years.
 
 ### Alliances and eras (`experiments/marches.toml`)
 
-Five realms, about 230 provinces, three years, 16 seeds. In "alliance" the first two realms
-(Aldmark and Brennholt) start allied; "future" swaps the medieval troops and terrain for the
-future era's (`era = "future"`), with the same land and decisions.
+Five realms, about 230 provinces, three years, 16 seeds, with each era's tech tree (knights and
+hovertanks need a tech first). In "alliance" the first two realms (Aldmark and Brennholt) start
+allied; "future" swaps the medieval troops, terrain and techs for the future era's
+(`era = "future"`), with the same land and decisions.
 
 | | medieval | alliance | future | future, alliance |
 |---|---:|---:|---:|---:|
-| `territory.realm1` | 34.5 ± 64.1 | 74.4 ± 53.4 | 23.2 ± 51.6 | 86.1 ± 57.7 |
-| `territory.realm2` | 44.5 ± 63.9 | 102.0 ± 40.6 | 61.0 ± 88.4 | 99.2 ± 61.1 |
-| `territory.realm3` | 54.8 ± 75.0 | 35.3 ± 67.2 | 62.4 ± 88.4 | 13.8 ± 55.2 |
-| `gangs_alive` (realms left) | 3.50 | 2.50 | 3.12 | 2.19 |
-| `battles` | 1142 ± 258 | 682 ± 405 | 744 ± 303 | 339 ± 238 |
-| `destroyed` | 296 ± 67 | 174 ± 109 | 227 ± 87 | 106 ± 70 |
-| `top_share` | 0.67 | 0.58 | 0.81 | 0.72 |
-| `m.Truces` | 14.2 | 6.9 | 3.8 | 1.3 |
+| `territory.realm1` | 37.4 ± 63.9 | 70.7 ± 50.4 | 26.6 ± 55.7 | 68.9 ± 57.6 |
+| `territory.realm2` | 63.6 ± 86.0 | 126.4 ± 50.2 | 37.7 ± 68.0 | 93.7 ± 63.9 |
+| `territory.realm3` | 52.9 ± 61.6 | 0 | 67.9 ± 89.5 | 38.1 ± 78.1 |
+| `gangs_alive` (realms left) | 2.56 | 2.25 | 3.12 | 2.00 |
+| `battles` | 1011 ± 273 | 664 ± 312 | 700 ± 264 | 404 ± 236 |
+| `destroyed` | 293 ± 78 | 180 ± 92 | 234 ± 81 | 140 ± 90 |
+| `top_share` | 0.68 | 0.65 | 0.77 | 0.71 |
+| `m.Truces` | 19.1 | 9.2 | 7.7 | 4.4 |
 
-* The alliance pays: the two allies end with 176 provinces between them instead of 79 (185
-  instead of 84 in the future era), most of a land of about 230. They never fight each other
+* The alliance pays: the two allies end with 197 provinces between them instead of 101 (163
+  instead of 64 in the future era), most of a land of about 230. They never fight each other
   and their troops cross each other's land, so they face one front fewer each.
 * With an alliance there are fewer battles, not more: the allies win sooner, and a smaller,
   settled map has fewer fronts.
-* The future era is more decisive (the largest realm ends with 81% of the land, against 67%)
-  and makes almost no peace: drones and hovertanks reach a capital in days, so a realm under
-  threat is lost before it can afford a truce.
+* The future era is more decisive (the largest realm ends with 77% of the land, against 68%)
+  and makes less peace: drones and hovertanks reach a capital in days, so a realm under threat
+  is lost before it can afford a truce.
 * The spread is wide (the standard deviations are as large as the means): which realm wins
   depends on where the capitals fall and who meets whom first, as in the genre.
 
@@ -186,33 +187,34 @@ future era's (`era = "future"`), with the same land and decisions.
 
 Eight families at their seats on ISTAT's 1871 Italy (Savoia in Torino, Visconti in Milano, Della
 Scala in Verona, Medici in Firenze, Este in Ferrara, Colonna in Roma, Aragona in Napoli,
-Chiaramonte in Palermo), five years, 16 seeds; taxes and recruits follow the 1871 population,
-terrain the real elevation. Territory at the end, in places:
+Chiaramonte in Palermo), five years, 16 seeds; taxes, recruits and learning follow the 1871
+population (and the old universities), terrain the real elevation; the medieval tech tree.
+Territory at the end, in places:
 
 | | circondari (284) | provinces (69) |
 |---|---:|---:|
-| Savoia | 53.1 ± 74.4 | 13.9 ± 12.5 |
-| Visconti | 83.6 ± 80.3 | 8.2 ± 11.6 |
-| Della Scala | 2.2 ± 8.8 | 10.5 ± 10.9 |
-| Medici | 26.7 ± 59.4 | 8.4 ± 9.6 |
-| Este | 0 | 0.4 ± 1.5 |
-| Colonna | 15.6 ± 53.0 | 3.8 ± 7.3 |
-| Aragona | 1.1 ± 3.8 | 1.6 ± 3.6 |
-| Chiaramonte | 101.7 ± 37.5 | 22.2 ± 3.3 |
-| families left | 2.8 | 3.8 |
-| `top_share` | 0.59 | 0.38 |
-| largest at the end | Visconti 8, Savoia 4, Medici 2, Colonna 1, Chiaramonte 1 | Chiaramonte 4, Della Scala 4, Savoia 4, Visconti 2, Colonna 1, Medici 1 |
+| Savoia | 68.4 ± 82.7 | 14.2 ± 8.6 |
+| Visconti | 83.8 ± 87.3 | 3.8 ± 7.7 |
+| Della Scala | 0 | 15.8 ± 9.7 |
+| Medici | 17.6 ± 44.6 | 4.2 ± 7.8 |
+| Este | 0.1 ± 0.5 | 1.5 ± 6.0 |
+| Colonna | 6.3 ± 16.7 | 6.9 ± 8.7 |
+| Aragona | 14.9 ± 28.4 | 1.8 ± 4.3 |
+| Chiaramonte | 93.0 ± 46.8 | 20.9 ± 4.7 |
+| families left | 2.8 | 4.4 |
+| `top_share` | 0.60 | 0.35 |
+| largest at the end | Visconti 8, Savoia 5, Chiaramonte 2, Medici 1 | Della Scala 5, Chiaramonte 4, Savoia 3, others 1 each |
 
 * **Sicily holds and takes the South.** Chiaramonte is never destroyed and has the steadiest
   result: the island is rich, and the only way in is the strait, which one army can hold. From
-  there it takes Calabria and Naples: Aragona, in Napoli, almost always falls to it. The
+  there it takes Calabria and Naples: Aragona, in Napoli, usually falls to it. The
   Kingdom of Sicily, once again, without being told to.
 * **In the North, the Po valley decides.** Visconti or Savoia usually end up largest: the
   plain is rich and quick to cross. Este, in Ferrara between Milan, Verona and Florence, never
   survives.
 * **The cut of the land changes the war.** On 69 provinces, each a large and slow conquest,
-  almost four families are left after five years and the largest holds 38% of Italy; on 284
-  circondari, under three are left and the largest holds 59%. The same areal-unit effect as
+  more than four families are left after five years and the largest holds 35% of Italy; on 284
+  circondari, under three are left and the largest holds 60%. The same areal-unit effect as
   Gangland's granularity experiment, on a real map.
 
 ## Ideas for more

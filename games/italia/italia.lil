@@ -20,3 +20,23 @@ event muster
     for realm
     do global Recruits add map Population $recruits_per_thousand
 end
+
+event learning
+    scope place
+    for realm
+    do global Learning add map Population $learning_per_thousand
+end
+
+event studia                     # the old universities: Bologna, Padova, Napoli, Siena...
+    scope place
+    for realm
+    if map University greater 0
+    do global Learning add map University $learning_per_university
+end
+
+event more_learning              # the Universities tech doubles it
+    scope place
+    for realm
+    if tech universities
+    do global Learning add map Population $learning_per_thousand
+end

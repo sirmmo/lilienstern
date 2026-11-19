@@ -88,5 +88,73 @@ speed = 110
 cost = { Funds = 75, Recruits = 4 }
 upkeep = { Funds = 0.7 }
 damage = { light = 70, ranged = 30, heavy = 65, fast = 50 }
+requires = "antigravity"
 occupy = 2
 description = "Fast over any ground, mountains too; weak against drones."
+
+# ---- Research
+
+[research]
+resource = "Learning"
+
+[[tech]]
+id = "fusion"
+name = "Fusion power"
+cost = 240
+upkeep = -20
+description = "Cheap energy: troops cost a fifth less to keep."
+
+[[tech]]
+id = "nanoweave"
+name = "Nanoweave armour"
+cost = 240
+defense = 1
+troops = ["light", "heavy"]
+description = "Militia and mechs take less damage."
+
+[[tech]]
+id = "swarm"
+name = "Swarm intelligence"
+cost = 280
+damage = 25
+troops = ["ranged"]
+description = "Drone wings hit harder."
+
+[[tech]]
+id = "antigravity"
+name = "Antigravity"
+cost = 320
+requires = ["fusion"]
+description = "Hovertanks."
+
+[[tech]]
+id = "railguns"
+name = "Railguns"
+cost = 400
+requires = ["fusion"]
+damage = 15
+description = "Every troop hits harder."
+
+[[tech]]
+id = "exoskeletons"
+name = "Exoskeletons"
+cost = 240
+damage = 20
+occupy = 30
+troops = ["light"]
+description = "Militia hit harder and hold ground faster."
+
+[[tech]]
+id = "orbital"
+name = "Orbital transit"
+cost = 300
+requires = ["antigravity"]
+speed = 20
+description = "Every troop moves faster."
+
+[[tech]]
+id = "universities"
+name = "Neural archives"
+cost = 240
+weight = 1.5
+description = "More learning from every province."

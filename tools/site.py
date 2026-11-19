@@ -139,19 +139,21 @@ def main():
     shutil.copy(a.wasm, os.path.join(play, "lilienstern.wasm"))
     game = os.path.join(play, "game")
     os.makedirs(os.path.join(game, "eras"))
-    for f in ["params.toml", "game.toml", "realms.lil", "eras/medieval.toml", "eras/future.toml"]:
+    for f in ["params.toml", "game.toml", "realms.lil", "eras/medieval.toml", "eras/medieval.lil", "eras/future.toml"]:
         shutil.copy(os.path.join(ROOT, "games", "marches", f), os.path.join(game, f))
 
     # Italia: the Marches page with Italia's start screen, its files and Marches' shared ones.
     play = os.path.join(out, "italia")
     shutil.copytree(os.path.join(ROOT, "web", "marches"), play, ignore=shutil.ignore_patterns("index.html"))
     shutil.copy(os.path.join(ROOT, "web", "italia", "index.html"), play)
+    shutil.copytree(os.path.join(ROOT, "web", "italia", "crests"), os.path.join(play, "crests"))
     shutil.copy(a.wasm, os.path.join(play, "lilienstern.wasm"))
     game = os.path.join(play, "game")
-    for f in ["params.toml", "game.toml", "italia.lil", "maps/italia-1871-circondari.geojson", "maps/italia-1871-province.geojson"]:
+    for f in ["params.toml", "game.toml", "italia.lil", "maps/italia-1871-circondari.geojson", "maps/italia-1871-province.geojson",
+              "maps/italia-cities.geojson"]:
         os.makedirs(os.path.dirname(os.path.join(game, f)), exist_ok=True)
         shutil.copy(os.path.join(ROOT, "games", "italia", f), os.path.join(game, f))
-    for f in ["realms.lil", "eras/medieval.toml", "eras/future.toml"]:
+    for f in ["realms.lil", "eras/medieval.toml", "eras/medieval.lil", "eras/future.toml"]:
         os.makedirs(os.path.dirname(os.path.join(game, "marches", f)), exist_ok=True)
         shutil.copy(os.path.join(ROOT, "games", "marches", f), os.path.join(game, "marches", f))
     with open(os.path.join(out, ".nojekyll"), "w"):

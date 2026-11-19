@@ -9,10 +9,12 @@
 const radio = (name) => document.querySelector(`input[name=${name}]:checked`).value;
 const CONFIG = Object.assign({
   id: 'marches',
-  files: () => ['params.toml', 'game.toml', 'realms.lil', 'eras/medieval.toml', 'eras/future.toml'],
+  files: () => ['params.toml', 'game.toml', 'realms.lil', 'eras/medieval.toml', 'eras/medieval.lil', 'eras/future.toml'],
   probe: { provinces: 40 }, // a quick game, to learn the factions' names and colours
   params: () => ({ era: radio('era'), provinces: +radio('size') }),
   count: null, // the parameter with the number of factions that play, if the start screen sets it
+  cities: null, // a GeoJSON of points (name, province, big) drawn as labels, fetched from game/
+  crests: null, // faction name -> image
 }, window.GAME || {});
 const VIEWS = { Wealth: 'Wealth', Population: 'People', Elevation: 'Elevation', Fort: 'Castles', Violence: 'Battles' };
 const TWEEN_MS = 450;
@@ -122,7 +124,7 @@ function realmChoice() {
   if (several && !localPick.size) localPick.add(player);
   list.forEach((r) => {
     const b = document.createElement('button');
-    b.innerHTML = `<i class="chip" style="background:${r.color}"></i>${r.name}`;
+    b.innerHTML = `${chipFor(r)}${r.name}`;
     if (several ? localPick.has(r.i) : r.i === player) b.classList.add('on');
     b.onclick = () => {
       if (several) {
@@ -226,6 +228,12 @@ async function launch(s, commands) {
     era = s.params.era || 'medieval';
     document.body.classList.toggle('future', era === 'future');
     info = call({ op: 'new', files: await files(s.params), params: s.params, seed: s.seed, players: s.players });
+    if (CONFIG.cities && !cities) {
+      try {
+        const r = await fetch('game/' + CONFIG.cities);
+        if (r.ok) cities = await r.json();
+      } catch { /* no labels: the game is the same */ }
+    }
     log = [];
     for (const c of commands) apply(c);
     humans = s.players.slice();
@@ -423,7 +431,7 @@ function turn() {
     el.className = 'overlay';
     document.body.appendChild(el);
   }
-  el.innerHTML = `<div class="sheet"><h2><i class="chip" style="background:${f.color}"></i> ${f.name}</h2>
+  el.innerHTML = `<div class="sheet"><h2>${chipFor(f)} ${f.name}</h2>
     <p>Day ${st.day}: it is ${f.name}'s turn. The others, look away.</p><button class="primary big" id="bTurn">I am ${f.name}</button></div>`;
   el.hidden = false;
   $('bTurn').onclick = () => { el.hidden = true; selected = null; chosen = []; setupHud(); refresh(false); frameOn(player); };
@@ -501,7 +509,7 @@ function showLobby() {
   const fams = lobbyState().families;
   box.innerHTML = `<div class="code">Room <b>${net.code}</b></div>
     <div class="muted small">Friends open <a href="${link}" target="_blank">${link}</a>, or choose "join a room" and type the code.</div>
-    <div class="seats">${fams.map((f) => `<div><i class="chip" style="background:${f.color}"></i>${f.name}<span class="n">${net.seats.get(f.i) === 'host' ? 'you' : net.seats.has(f.i) ? 'a friend' : 'the computer'}</span></div>`).join('')}</div>
+    <div class="seats">${fams.map((f) => `<div>${chipFor(f)}${f.name}<span class="n">${net.seats.get(f.i) === 'host' ? 'you' : net.seats.has(f.i) ? 'a friend' : 'the computer'}</span></div>`).join('')}</div>
     <div class="pace">Pace <select id="pace">${PACES.map(([v, t]) => `<option value="${v}"${v === net.pace ? ' selected' : ''}>${t}</option>`).join('')}</select></div>
     <button id="bBegin" class="primary big">Begin</button>`;
   $('bBegin').onclick = beginRoom;
@@ -562,7 +570,7 @@ function hostMessage(conn, msg) {
   if (msg.t === 'req') {
     // A guest acts only for its own family.
     const c = { ...msg.cmd, faction: f };
-    if (!['take', 'order'].includes(c.op)) return;
+    if (!['take', 'order', 'research'].includes(c.op)) return;
     try {
       apply(c);
     } catch (e) {
@@ -613,7 +621,7 @@ async function guestMessage(msg) {
     box.innerHTML = `<div class="code">Room <b>${msg.code}</b>${msg.started ? ' <span class="muted">(the game is under way)</span>' : ''}</div>
       <div class="muted small">Choose your family${msg.started ? ' (you take it over from the computer)' : ''}; the host begins the game.</div>
       <div class="pace">Pace: <b>${paceName(msg.pace)}</b></div>
-      <div class="seats">${msg.families.map((f) => `<div><i class="chip" style="background:${f.color}"></i>${f.name}<span class="n">${taken.has(f.i) ? (taken.get(f.i) === 'host' ? 'the host' : 'a friend') : `<button data-f="${f.i}">Play</button>`}</span></div>`).join('')}</div>`;
+      <div class="seats">${msg.families.map((f) => `<div>${chipFor(f)}${f.name}<span class="n">${taken.has(f.i) ? (taken.get(f.i) === 'host' ? 'the host' : 'a friend') : `<button data-f="${f.i}">Play</button>`}</span></div>`).join('')}</div>`;
     box.querySelectorAll('button[data-f]').forEach((b) => { b.onclick = () => { send({ t: 'pick', faction: +b.dataset.f }); box.querySelectorAll('button[data-f]').forEach((x) => { x.disabled = true; }); }; });
     $('bStart').hidden = true;
   } else if (msg.t === 'start') {
@@ -680,6 +688,28 @@ function framePadding() {
 }
 
 const empty = () => ({ type: 'FeatureCollection', features: [] });
+let cities = null; // the game's named cities, when it has them
+
+/** The cities' labels (a dot and a name; MapLibre leaves out those that would overlap). */
+function cityLayers(future) {
+  if (!cities) return [];
+  const ink = future ? '#e7ecf3' : '#231d16', halo = future ? 'rgba(12, 22, 38, .85)' : 'rgba(250, 246, 236, .9)';
+  return [
+    { id: 'city-dot', type: 'circle', source: 'cities', paint: { 'circle-radius': ['case', ['get', 'big'], 3.5, 2.5], 'circle-color': ink, 'circle-stroke-color': halo, 'circle-stroke-width': 1.2 } },
+    { id: 'city-name', type: 'symbol', source: 'cities',
+      layout: { 'text-field': ['get', 'name'], 'text-font': ['case', ['get', 'big'], ['literal', ['Noto Sans Bold']], ['literal', ['Noto Sans Regular']]],
+        'text-size': ['interpolate', ['linear'], ['zoom'], 5, ['case', ['get', 'big'], 12, 10], 9, ['case', ['get', 'big'], 16, 13]],
+        'text-offset': [0, 0.9], 'text-anchor': 'top', 'symbol-sort-key': ['case', ['get', 'big'], 0, ['==', ['get', 'kind'], 'capital'], 1, 2], 'text-padding': 3 },
+      paint: { 'text-color': ink, 'text-halo-color': halo, 'text-halo-width': 1.4 } },
+  ];
+}
+
+/** The main city of a place, by the cities' `province` (for maps of provinces). */
+function cityOf(name) {
+  if (!cities) return null;
+  const c = cities.features.find((f) => f.properties.province === name && f.properties.kind === 'capital');
+  return c && c.properties.name !== name ? c.properties.name : null;
+}
 
 function drawMap() {
   const future = era === 'future';
@@ -689,7 +719,9 @@ function drawMap() {
       places: { type: 'geojson', data: info.geojson, attribution: ['Lilienstern', info.name, info.credit].filter(Boolean).join(' · ') },
       routes: { type: 'geojson', data: empty() },
       preview: { type: 'geojson', data: empty() },
+      ...(cities ? { cities: { type: 'geojson', data: cities } } : {}),
     },
+    ...(cities ? { glyphs: 'https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf' } : {}),
     layers: [
       // Water: the sea around the land, and the river through it.
       { id: 'ground', type: 'background', paint: { 'background-color': future ? '#0c1626' : '#9fbfcc' } },
@@ -698,6 +730,7 @@ function drawMap() {
       { id: 'line', type: 'line', source: 'places', paint: { 'line-color': future ? '#000' : '#5a4b35', 'line-width': 0.6, 'line-opacity': 0.55 } },
       { id: 'mine', type: 'line', source: 'places', filter: ['==', ['get', 'mine'], 1], paint: { 'line-color': future ? '#fff' : '#1b1209', 'line-width': 1.4, 'line-opacity': 0.8 } },
       { id: 'selected', type: 'line', source: 'places', filter: ['==', ['get', 'idx'], -1], paint: { 'line-color': '#ffd54a', 'line-width': 3.5 } },
+      ...cityLayers(future),
       { id: 'routes', type: 'line', source: 'routes', paint: { 'line-color': ['get', 'color'], 'line-width': 2.5, 'line-dasharray': [2, 1.5], 'line-opacity': 0.9 } },
       { id: 'preview', type: 'line', source: 'preview', paint: { 'line-color': '#ffd54a', 'line-width': 3, 'line-dasharray': [1, 1] } },
     ],
@@ -707,6 +740,7 @@ function drawMap() {
   map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right');
   if (!narrow()) map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
   map.on('load', () => {
+    seatCrests();
     paint();
     drawTroops(false);
     map.on('click', 'fill', (e) => clickPlace(e.features[0].properties.idx));
@@ -744,6 +778,7 @@ function paint() {
   }
   map.setFilter('selected', ['==', ['get', 'idx'], selected ?? -1]);
   routes();
+  paintSeats();
 }
 
 // ---------- icons ----------
@@ -760,11 +795,40 @@ function decisionIcon(name) {
 
 const img = (src, cls = 'ico') => (src ? `<img class="${cls}" src="${src}" alt="">` : '');
 
+/** A faction's crest, when the page has one (Italia's families), else its colour. */
+function chipFor(f) {
+  const src = CONFIG.crests && CONFIG.crests[f.name];
+  return src ? `<img class="crest" src="${src}" alt="" title="${f.name}">` : `<i class="chip" style="background:${f.color}"></i>`;
+}
+
 /** The kind that stands for a stack: the most common, the dearest on a tie. */
 function leadKind(kinds) {
   const n = {};
   kinds.forEach((k) => { n[k] = (n[k] || 0) + 1; });
   return +Object.keys(n).sort((a, b) => n[b] - n[a] || b - a)[0];
+}
+
+// ---------- crests at the families' seats ----------
+
+let seats = [];
+function seatCrests() {
+  seats.forEach((s) => s.marker.remove());
+  seats = [];
+  if (!CONFIG.crests || !info.hqs) return;
+  info.hqs.forEach((p, f) => {
+    const src = CONFIG.crests[info.factions[f].name];
+    if (p == null || !src) return;
+    const el = document.createElement('div');
+    el.className = 'seat-crest';
+    el.style.backgroundImage = `url("${src}")`;
+    el.title = `${info.factions[f].name}: ${placeName(p)}`;
+    seats.push({ f, p, el, marker: new maplibregl.Marker({ element: el, offset: [0, -30] }).setLngLat(centres[p]).addTo(map) });
+  });
+}
+
+/** A family that has lost its seat: its crest fades. */
+function paintSeats() {
+  seats.forEach((s) => { s.el.style.opacity = st.owner[s.p] === s.f ? 1 : 0.35; });
 }
 
 // ---------- troops on the map ----------
@@ -938,6 +1002,9 @@ function preview(p, point) {
 function setupHud() {
   const me = info.factions[player];
   $('realmColor').style.background = me.color;
+  const crestSrc = CONFIG.crests && CONFIG.crests[me.name];
+  $('realmColor').classList.toggle('has-crest', !!crestSrc);
+  $('realmColor').style.backgroundImage = crestSrc ? `url("${crestSrc}")` : '';
   $('realmName').textContent = me.name;
   $('days').textContent = info.days;
   $('view').innerHTML = '';
@@ -975,7 +1042,86 @@ function hud() {
     $('army').appendChild(b);
   }
   players();
+  researchPanel();
   legend();
+}
+
+// ---------- research ----------
+
+/** What a tech does, in words. */
+function techEffects(t) {
+  const who = t.troops.length ? t.troops.join(', ') : 'all troops';
+  const out = [];
+  if (t.damage) out.push(`${who}: ${t.damage > 0 ? '+' : ''}${t.damage}% damage`);
+  if (t.defense) out.push(`${who}: +${t.defense} defence`);
+  if (t.speed) out.push(`${who}: +${t.speed}% speed`);
+  if (t.occupy) out.push(`${who}: +${t.occupy}% occupation`);
+  if (t.upkeep) out.push(`${who}: ${t.upkeep}% upkeep`);
+  if (t.unlocks.length) out.push(`unlocks ${t.unlocks.join(', ')}`);
+  return out.join('; ');
+}
+
+function researchPanel() {
+  let box = $('research');
+  if (!box) {
+    box = document.createElement('div');
+    box.id = 'research';
+    $('army').before(box);
+  }
+  if (!info.techs || !info.techs.length || st.known == null) { box.hidden = true; return; }
+  box.hidden = false;
+  const r = st.researching;
+  const known = st.known.length;
+  if (r == null) {
+    box.innerHTML = `<span class="lbl">Research · ${known} of ${info.techs.length} known</span>`
+      + (st.researchable.length ? '<button class="primary" id="bTechs">Choose what to research</button>' : '<div class="muted">Everything is known.</div>');
+  } else {
+    const t = info.techs[r];
+    const pct = Math.min(100, (100 * st.progress) / t.cost);
+    box.innerHTML = `<span class="lbl">Research · ${known} of ${info.techs.length} known</span>
+      <div class="bar"><span>${t.name}</span><div class="track"><div class="fill" style="width:${pct}%"></div></div><span class="v">${fmt(st.progress)}/${fmt(t.cost)}</span></div>
+      <button id="bTechs">Tech tree</button>`;
+  }
+  if ($('bTechs')) $('bTechs').onclick = techTree;
+}
+
+/** The tech tree: columns by how many techs lead to each; click one that can be researched. */
+function techTree() {
+  let el = $('techs');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'techs';
+    el.className = 'overlay';
+    document.body.appendChild(el);
+    el.onclick = (e) => { if (e.target === el) el.hidden = true; };
+  }
+  const depth = [];
+  const d = (i) => (depth[i] ??= info.techs[i].requires.length ? 1 + Math.max(...info.techs[i].requires.map(d)) : 0);
+  info.techs.forEach((_, i) => d(i));
+  const cols = [];
+  info.techs.forEach((t, i) => { (cols[depth[i]] ||= []).push(i); });
+  const known = new Set(st.known), open = new Set(st.researchable);
+  const card = (i) => {
+    const t = info.techs[i];
+    const state = known.has(i) ? 'known' : st.researching === i ? 'current' : open.has(i) ? 'open' : 'locked';
+    const needs = t.requires.length ? `<div class="needs">needs ${t.requires.map((r) => info.techs[r].name).join(', ')}</div>` : '';
+    const what = state === 'known' ? 'known' : state === 'current' ? `researching · ${fmt(st.progress)}/${fmt(t.cost)}` : `${fmt(t.cost)} ${(info.research || 'points').toLowerCase()}`;
+    return `<button class="tech ${state}" data-t="${i}" ${state === 'open' ? '' : 'disabled'}><b>${t.name}</b><span class="what">${what}</span>
+      <span class="fx">${techEffects(t) || t.description}</span>${needs}</button>`;
+  };
+  el.innerHTML = `<div class="sheet wide"><button class="close" id="techsClose" aria-label="Close">×</button>
+    <h2>Tech tree</h2><p class="muted">Every day your ${(info.research || 'research').toLowerCase()} goes into the tech you research; the one you click next keeps what was put in.</p>
+    <div class="tree">${cols.map((c) => `<div class="col">${c.map(card).join('')}</div>`).join('')}</div></div>`;
+  el.hidden = false;
+  $('techsClose').onclick = () => { el.hidden = true; };
+  el.querySelectorAll('button.tech.open').forEach((b) => {
+    b.onclick = () => {
+      if (act({ op: 'research', faction: player, tech: +b.dataset.t })) {
+        news(`Researching ${info.techs[+b.dataset.t].name}.`);
+        el.hidden = true;
+      }
+    };
+  });
 }
 
 /** Who plays, and whom the day waits for. */
@@ -993,7 +1139,7 @@ function players() {
     const state = !st.alive[f] ? 'fallen' : away.has(f) ? 'away' : ready.has(f) ? 'done' : 'thinking…';
     const who = mine.includes(f) ? (mode === 'local' ? 'here' : 'you') : mode === 'host' ? 'friend' : '';
     const ai = mode === 'host' && away.has(f) ? ` <button data-ai="${f}">to the computer</button>` : '';
-    return `<div class="${f === player ? 'me' : ''}"><i class="chip" style="background:${fac.color}"></i>${fac.name} <span class="muted">${who}</span><span class="n">${state}${ai}</span></div>`;
+    return `<div class="${f === player ? 'me' : ''}">${chipFor(fac)}${fac.name} <span class="muted">${who}</span><span class="n">${state}${ai}</span></div>`;
   }).join('');
   const room = net?.code ? `<span class="muted">· room ${net.code}</span>` : '';
   const pace = settings?.pace && settings.pace !== 'wait' ? `<div class="muted small">${paceName(settings.pace)}${mode === 'host' ? ` <button id="bPause">${paused ? 'Resume' : 'Pause'}</button>` : ''}</div>` : '';
@@ -1033,7 +1179,7 @@ function legend() {
   const rows = info.factions.map((f, i) => ({ f, i, n: st.territory[i] })).filter((r) => r.f.holds).sort((a, b) => b.n - a.n);
   $('legend').innerHTML = rows.map((r) => {
     const rel = r.i === player ? '' : ` <span class="rel ${st.relations[r.i]}">${st.relations[r.i]}</span>`;
-    return `<div class="${r.i === player ? 'me' : ''}"><i class="chip" style="background:${r.f.color}"></i>${r.f.name}${st.alive[r.i] ? '' : ' <span class="muted">(fallen)</span>'}${rel}<span class="n">${r.n} · ${army[r.i]}⚑</span></div>`;
+    return `<div class="${r.i === player ? 'me' : ''}">${chipFor(r.f)}${r.f.name}${st.alive[r.i] ? '' : ' <span class="muted">(fallen)</span>'}${rel}<span class="n">${r.n} · ${army[r.i]}⚑</span></div>`;
   }).join('') + `<div class="muted"><i class="chip" style="background:transparent"></i>nobody<span class="n">${st.owner.filter((o) => o < 0).length}</span></div>`;
 }
 
@@ -1067,6 +1213,7 @@ function card() {
   $('cardOwner').innerHTML = owner ? `Held by <b>${owner.name}</b>${c.owner === player ? ' (you)' : ''}${rel}` : 'Nobody holds it';
   const ter = c.terrain !== null ? info.terrains[c.terrain] : null;
   const kv = [
+    cityOf(c.name) ? `<span>Capital</span><span>${cityOf(c.name)}</span>` : '',
     ter ? `<span>Terrain</span><span>${ter.name}${ter.defense ? ` (+${ter.defense})` : ''}</span>` : '',
     `<span>Castles</span><span>${fmt(c.maps.Fort || 0)}</span>`,
     `<span>Wealth</span><span>${fmt(c.maps.Wealth || 0)}</span>`,
@@ -1076,7 +1223,7 @@ function card() {
   const top = Math.max(40, ...c.presence.map((p) => p.presence));
   const bars = c.presence.sort((a, b) => b.presence - a.presence).map((p) => {
     const f = info.factions[p.faction];
-    return `<div class="bar"><i class="chip" style="background:${f.color}"></i><span>${f.name}</span><div class="track"><div class="fill" style="width:${100 * p.presence / top}%;background:${f.color}"></div></div><span class="v">${fmt(p.presence)}</span></div>`;
+    return `<div class="bar">${chipFor(f)}<span>${f.name}</span><div class="track"><div class="fill" style="width:${100 * p.presence / top}%;background:${f.color}"></div></div><span class="v">${fmt(p.presence)}</span></div>`;
   }).join('') || '<div class="muted">No realm has a hold here.</div>';
   $('cardBody').innerHTML = `<div class="kv">${kv}</div><h3>Hold</h3>${bars}<h3>Troops here</h3><div class="troops" id="cardTroops"></div>`;
   const box = $('cardTroops');
@@ -1084,7 +1231,7 @@ function card() {
   c.troops.forEach((t) => {
     const k = info.troopKinds[t.kind];
     const row = document.createElement('div');
-    row.innerHTML = `<i class="chip" style="background:${info.factions[t.faction].color}"></i>${img(troopIcon(t.kind))}${k.name}<span class="hp"><i style="width:${t.hp}%"></i></span>`;
+    row.innerHTML = `${chipFor(info.factions[t.faction])}${img(troopIcon(t.kind))}${k.name}<span class="hp"><i style="width:${t.hp}%"></i></span>`;
     const where = document.createElement('span');
     where.className = 'where';
     where.textContent = t.moving ? `→ ${placeName(t.to)}` : '';
@@ -1151,6 +1298,9 @@ function report(a, b) {
     else if (r === 'ally') news(`${name} is your ally.`, 'good');
   });
   if (a.alive[player] && !b.alive[player]) news('Your realm has fallen.', 'bad');
+  const learnt = (b.known || []).filter((t) => !(a.known || []).includes(t));
+  learnt.forEach((t) => news(`Learnt: ${info.techs[t].name}${info.techs[t].unlocks.length ? ` (${info.techs[t].unlocks.join(', ')})` : ''}.`, 'good'));
+  if (learnt.length && b.researching == null && b.researchable.length) news('Choose what to research next.');
 }
 
 function refresh(animate) {
@@ -1179,7 +1329,7 @@ function gameOver() {
   $('overTitle').textContent = all ? 'The land is yours' : !st.alive[player] ? 'Your realm has fallen' : `${Math.round(info.days / 365)} years later`;
   const cup = all || place === 1 ? 'cup-gold' : st.alive[player] ? 'cup-laurel' : 'cup-dark';
   $('overText').innerHTML = `<img class="cup" src="icons/${cup}.jpg" alt=""><p>On day ${st.day} you are <b>#${place}</b> of ${rows.length}, holding <b>${st.territory[player]}</b> provinces.</p>`
-    + rows.map((r) => `<div><i class="chip" style="background:${r.f.color}"></i> ${r.f.name}: ${r.n}</div>`).join('')
+    + rows.map((r) => `<div>${chipFor(r.f)} ${r.f.name}: ${r.n}</div>`).join('')
     + `<p class="muted">Battles fought: ${fmt(st.battles || 0)}; troops destroyed: ${fmt(st.destroyed || 0)}.</p>`;
   $('over').hidden = false;
 }

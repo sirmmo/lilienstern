@@ -87,6 +87,17 @@ pub fn handle(req: &Value) -> Result<Value, String> {
             "fingerprint" => {
                 Ok(json!({ "fingerprint": format!("{:016x}", w.fingerprint()), "day": w.day }))
             }
+            "research" => {
+                let f = faction_arg(w, req)?;
+                let t = match &req["tech"] {
+                    Value::Number(n) => n.as_u64().map(|i| i as usize),
+                    Value::String(id) => w.game.war.tech(id),
+                    _ => None,
+                }
+                .ok_or("which tech?")?;
+                w.set_research(f, t)?;
+                Ok(state(w, req["map"].as_u64().map(|m| m as usize), Some(f)))
+            }
             "claim" => {
                 // A person takes over a faction the AI was playing.
                 let f = match &req["faction"] {
@@ -233,6 +244,14 @@ fn start(req: &Value) -> Result<Value, String> {
             "cost": t.cost.iter().map(|&(r, v)| json!({ "resource": game.rules.resources[r].id, "amount": v })).collect::<Vec<_>>(),
             "damage": game.war.troops.iter().zip(&t.damage).map(|(o, d)| (o.id.clone(), json!(d))).collect::<serde_json::Map<_, _>>(),
         })).collect::<Vec<_>>(),
+        "techs": game.war.techs.iter().map(|t| json!({
+            "id": t.id, "name": t.name, "cost": t.cost, "requires": t.requires, "description": t.description,
+            "damage": t.damage, "defense": t.defense, "speed": t.speed, "occupy": t.occupy, "upkeep": t.upkeep,
+            "troops": t.troops.iter().map(|&k| game.war.troops[k].name.clone()).collect::<Vec<_>>(),
+            "unlocks": game.war.troops.iter().filter(|k| k.requires.is_some_and(|r| game.war.techs[r].id == t.id)).map(|k| k.name.clone()).collect::<Vec<_>>(),
+        })).collect::<Vec<_>>(),
+        "research": game.war.research.map(|r| game.rules.resources[r].id.clone()),
+        "hqs": world.factions.iter().map(|f| f.hq).collect::<Vec<_>>(),
         "terrains": game.war.terrains.iter().map(|t| json!({ "id": t.id, "name": t.name, "color": t.color, "defense": t.defense })).collect::<Vec<_>>(),
         "terrain": world.terrain.iter().map(|t| t.map_or(-1, |t| t as i64)).collect::<Vec<_>>(),
         "kmDistances": game.war.km,
@@ -289,6 +308,11 @@ fn state(w: &World, map: Option<usize>, me: Option<usize>) -> Value {
         "troops": troops(w),
         "fights": fights(w),
         "relations": me.map(|f| w.relation[f].iter().map(|r| r.name()).collect::<Vec<_>>()),
+        "known": me.map(|f| (0..g.war.techs.len()).filter(|&t| w.known[f][t]).collect::<Vec<_>>()),
+        "researching": me.and_then(|f| w.research[f]),
+        "progress": me.map(|f| round1(w.progress[f])),
+        "researchable": me.map(|f| w.researchable(f)),
+        "techs_known": w.known.iter().map(|k| k.iter().filter(|&&x| x).count()).collect::<Vec<_>>(),
         "battles": s.get("battles"),
         "destroyed": s.get("destroyed"),
     })
@@ -425,6 +449,7 @@ mod tests {
             "game.toml",
             "realms.lil",
             "eras/medieval.toml",
+            "eras/medieval.lil",
             "eras/future.toml",
         ] {
             m.insert(
@@ -550,6 +575,27 @@ mod tests {
             .contains("not played"));
         let fp = handle(&json!({ "op": "fingerprint" })).unwrap();
         assert_eq!(fp["fingerprint"], first["fingerprint"]);
+        // Research: a tech that can be researched, then one that cannot yet.
+        let st = handle(&json!({ "op": "research", "faction": 0, "tech": "roads" })).unwrap();
+        assert_eq!(
+            st["researching"],
+            json!(info["techs"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .position(|t| t["id"] == "roads")
+                .unwrap())
+        );
+        assert!(
+            handle(&json!({ "op": "research", "faction": 0, "tech": "gunpowder" }))
+                .unwrap_err()
+                .contains("cannot be researched")
+        );
+        assert!(info["techs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|t| t["unlocks"] == json!(["Knights"])));
         // A player who leaves: the AI takes the faction back.
         let left = handle(&json!({ "op": "release", "faction": 2 })).unwrap();
         assert_eq!(left["players"], json!([0]));

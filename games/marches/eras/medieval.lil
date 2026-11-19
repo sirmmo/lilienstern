@@ -1,0 +1,13 @@
+# Medieval decisions that only this era has: its troops that the shared decisions (realms.lil)
+# do not raise.
+
+decision raise_gunners
+    label Raise arquebusiers
+    for realm
+    target owned
+    if foes is 0
+    if army less $max_army
+    do raise gunners
+    weight 1.2
+    weight threat 0.5
+end

@@ -103,6 +103,22 @@ One lesson from tuning Marches: with the default saving rule a faction always en
 its cheapest troop, because a cheap pick in between ends the saving for a dear one. Factions
 can now save for a goal (`saving = "goal"`).
 
+## Techs
+
+A tech tree is the genre's other long-term choice, and here it is data like the rest: techs
+with a cost, prerequisites and effects, and one research resource that scripts produce (so
+research can come from provinces, buildings, universities or trade, as a game decides). Each
+day a faction's research points go into its current tech. Techs act in two ways, which together
+cover what trees usually do:
+
+* **bonuses** the engine applies to troops (damage, defence, speed, occupation, upkeep), per
+  troop kind, kept as multipliers per faction and recomputed only when a tech is learnt;
+* **conditions** for everything else: a troop that `requires` a tech, and `if tech X` in any
+  decision or event (new decisions, more income, a different AI).
+
+In a game without techs every bonus is exactly 1 (or 0 stars), and multiplying by 1 changes no
+bit, so games written before techs run exactly as they did.
+
 ## GlassBox on a graph
 
 The `glassbox` crate is the GlassBox language and engine with places instead of tiles. Compared

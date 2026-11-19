@@ -209,8 +209,9 @@ impl World<'_> {
             path.clear();
             cost = 0.0;
         }
+        let speed = def.speed * self.bonus[t.faction][t.kind].speed;
         Some(Route {
-            days: (cost / def.speed).ceil().max(0.0) as u32,
+            days: (cost / speed).ceil().max(0.0) as u32,
             path,
             cost,
         })
@@ -265,7 +266,8 @@ impl World<'_> {
             for i in mine {
                 let t = &self.troops[i];
                 if dist[t.place].is_finite() {
-                    let eta = dist[t.place] / war.troops[t.kind].speed;
+                    let eta =
+                        dist[t.place] / (war.troops[t.kind].speed * self.bonus[f][t.kind].speed);
                     cands.push((eta, t.id, i, Self::follow(&next, t.place, to)));
                 }
             }
@@ -310,7 +312,7 @@ impl World<'_> {
                 if t.path.is_empty() {
                     0.0
                 } else {
-                    war.troops[t.kind].speed
+                    war.troops[t.kind].speed * self.bonus[t.faction][t.kind].speed
                 }
             })
             .collect();
@@ -364,10 +366,11 @@ impl World<'_> {
         }
     }
 
-    /// Defence stars of a troop of faction `f` at `p`.
-    fn stars(&self, f: usize, p: usize) -> f64 {
+    /// Defence stars of a troop of faction `f` and kind `kind` at `p`.
+    fn stars(&self, f: usize, kind: usize, p: usize) -> f64 {
         let war = &self.game.war;
-        let mut s = self.terrain[p].map_or(0.0, |t| war.terrains[t].defense);
+        let mut s =
+            self.terrain[p].map_or(0.0, |t| war.terrains[t].defense) + self.bonus[f][kind].defense;
         if let Some(m) = war.fort_map {
             s += self.gb.maps[m][p];
         }
@@ -418,9 +421,12 @@ impl World<'_> {
                     0.0
                 };
                 let b = &self.troops[j];
-                let cover = (self.stars(b.faction, p) * war.defense_per_star * b.hp / 100.0)
+                let cover = (self.stars(b.faction, b.kind, p) * war.defense_per_star * b.hp
+                    / 100.0)
                     .clamp(0.0, 100.0);
-                let d = (base + roll) * war.damage_scale * self.troops[i].hp / 100.0
+                let a = &self.troops[i];
+                let d = (base + roll) * war.damage_scale * a.hp / 100.0
+                    * self.bonus[a.faction][a.kind].damage
                     * (100.0 - cover)
                     / 100.0;
                 dmg[j] += d;
@@ -459,7 +465,9 @@ impl World<'_> {
             let (f, p) = (t.faction, t.place);
             // Castles hold out longer.
             let fort = war.fort_map.map_or(0.0, |m| self.gb.maps[m][p].max(0.0));
-            let k = war.troops[t.kind].occupy * t.hp / 100.0 / (1.0 + fort);
+            let k = war.troops[t.kind].occupy * self.bonus[f][t.kind].occupy * t.hp
+                / 100.0
+                / (1.0 + fort);
             if k <= 0.0 || self.foes(Some(f), p) > 0.0 {
                 continue;
             }
@@ -485,8 +493,9 @@ impl World<'_> {
         let nr = self.game.rules.resources.len();
         let mut due = vec![vec![0.0; nr]; nf];
         for t in &self.troops {
+            let k = self.bonus[t.faction][t.kind].upkeep;
             for &(r, v) in &war.troops[t.kind].upkeep {
-                due[t.faction][r] += v;
+                due[t.faction][r] += v * k;
             }
         }
         let mut unpaid = vec![false; nf];

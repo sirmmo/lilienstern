@@ -22,6 +22,19 @@ event muster
     do global Recruits add $recruits
 end
 
+event scholars                  # learning, for research (the era's techs)
+    scope place
+    for realm
+    do global Learning add $learning
+end
+
+event universities
+    scope place
+    for realm
+    if tech universities
+    do global Learning add $learning
+end
+
 # ---- Land ----
 
 decision settle

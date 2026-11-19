@@ -61,6 +61,8 @@ struct Sums {
     losses: f64,
     raised: f64,
     destroyed: f64,
+    /// Techs learnt.
+    learnt: f64,
     metrics: Vec<f64>,
 }
 
@@ -73,6 +75,7 @@ impl Sums {
         self.losses += other.losses;
         self.raised += other.raised;
         self.destroyed += other.destroyed;
+        self.learnt += other.learnt;
         if self.metrics.len() < other.metrics.len() {
             self.metrics.resize(other.metrics.len(), 0.0);
         }
@@ -165,6 +168,14 @@ pub struct World<'g> {
     pub terrain: Vec<Option<usize>>,
     /// Whether every holder is at war with every other (the usual case, and the fast one).
     at_war: bool,
+    /// `known[faction][tech]`.
+    pub known: Vec<Vec<bool>>,
+    /// The tech each faction is researching.
+    pub research: Vec<Option<usize>>,
+    /// Points put into it so far.
+    pub progress: Vec<f64>,
+    /// `bonus[faction][troop kind]`: what the faction's techs add to its troops.
+    bonus: Vec<Vec<crate::war::Bonus>>,
     /// Places where two gangs clashed today.
     pub contested: usize,
     /// Places above the control's hotspot level today.
@@ -252,6 +263,10 @@ impl<'g> World<'g> {
             troops: Vec::new(),
             next_troop: 1,
             at_war: true,
+            known: vec![vec![false; game.war.techs.len()]; nf],
+            research: vec![None; nf],
+            progress: vec![0.0; nf],
+            bonus: vec![vec![crate::war::Bonus::default(); game.war.troops.len()]; nf],
             strength: vec![vec![0.0; n]; nf],
             terrain: (0..n)
                 .map(|p| {
@@ -288,6 +303,12 @@ impl<'g> World<'g> {
             gb,
         };
         w.refresh_relations();
+        for (f, def) in game.factions.iter().enumerate() {
+            for &t in &def.start_techs {
+                w.known[f][t] = true;
+            }
+            w.refresh_bonus(f);
+        }
         w.place_headquarters();
         w.update_owners(false);
         w.series.columns = w.columns();
@@ -455,7 +476,10 @@ impl<'g> World<'g> {
         // 5. Decisions.
         self.decide();
 
-        // 6. Troops.
+        // 6. Research, then troops.
+        if !g.war.techs.is_empty() {
+            self.study();
+        }
         if !self.troops.is_empty() {
             self.war();
         }
@@ -504,6 +528,13 @@ impl<'g> World<'g> {
         }
         for r in self.relation.iter().flatten() {
             eat(*r as u64);
+        }
+        for (f, k) in self.known.iter().enumerate() {
+            for &x in k {
+                eat(u64::from(x));
+            }
+            eat(self.research[f].map_or(u64::MAX, |t| t as u64));
+            eat(self.progress[f].to_bits());
         }
         eat(self.rng.state());
         h
@@ -621,6 +652,84 @@ impl<'g> World<'g> {
         Ok(())
     }
 
+    // ---------- research ----------
+
+    /// Techs faction `f` can research now: not known, everything they need known.
+    pub fn researchable(&self, f: usize) -> Vec<usize> {
+        let techs = &self.game.war.techs;
+        (0..techs.len())
+            .filter(|&t| !self.known[f][t] && techs[t].requires.iter().all(|&r| self.known[f][r]))
+            .collect()
+    }
+
+    /// Faction `f` researches `tech` from now on (what it put into another is kept for this one).
+    pub fn set_research(&mut self, f: usize, tech: usize) -> Result<(), String> {
+        if !self.researchable(f).contains(&tech) {
+            let name = self
+                .game
+                .war
+                .techs
+                .get(tech)
+                .map_or("that", |t| t.name.as_str());
+            return Err(format!("{name} cannot be researched now"));
+        }
+        self.research[f] = Some(tech);
+        Ok(())
+    }
+
+    fn refresh_bonus(&mut self, f: usize) {
+        let war = &self.game.war;
+        for k in 0..war.troops.len() {
+            self.bonus[f][k] = war.bonus(&self.known[f], k);
+        }
+    }
+
+    /// What faction `f`'s techs add to its troops of kind `kind`.
+    pub fn bonus(&self, f: usize, kind: usize) -> crate::war::Bonus {
+        self.bonus[f][kind]
+    }
+
+    /// Every day: each faction's research resource goes into its current tech, and the AI
+    /// picks the next tech (at random, in proportion to the techs' weights). A person picks
+    /// their own; until they do, their points wait in their account.
+    fn study(&mut self) {
+        let g = self.game;
+        let Some(res) = g.war.research else { return };
+        for f in 0..self.factions.len() {
+            if !self.factions[f].alive {
+                continue;
+            }
+            if self.research[f].is_none() && !self.players.contains(&f) {
+                let cands = self.researchable(f);
+                let total: f64 = cands.iter().map(|&t| g.war.techs[t].weight).sum();
+                if total > 0.0 {
+                    let mut r = self.rng.f64() * total;
+                    for &t in &cands {
+                        r -= g.war.techs[t].weight;
+                        if r < 0.0 {
+                            self.research[f] = Some(t);
+                            break;
+                        }
+                    }
+                    if self.research[f].is_none() {
+                        self.research[f] = cands.last().copied();
+                    }
+                }
+            }
+            let Some(t) = self.research[f] else { continue };
+            let acct = self.factions[f].account;
+            self.progress[f] += self.gb.accounts[acct][res];
+            self.gb.accounts[acct][res] = 0.0;
+            if self.progress[f] >= g.war.techs[t].cost {
+                self.progress[f] -= g.war.techs[t].cost;
+                self.known[f][t] = true;
+                self.research[f] = None;
+                self.today.learnt += 1.0;
+                self.refresh_bonus(f);
+            }
+        }
+    }
+
     // ---------- queries ----------
 
     /// Whether two factions are at war.
@@ -702,6 +811,7 @@ impl<'g> World<'g> {
             Cond::Day { cmp, value } => cmp.test(f64::from(self.day), value),
             Cond::Chance(p) => self.dry || self.rng.f64() < p,
             Cond::Count { what, cmp, value } => cmp.test(self.count(what, ctx), value),
+            Cond::Tech(t) => ctx.faction.is_some_and(|f| self.known[f][t]),
             Cond::Relation(r) => fp.is_some_and(|(f, p)| {
                 self.owner[p].is_some_and(|o| o != f && self.relation[f][o] == r)
             }),
@@ -745,6 +855,9 @@ impl<'g> World<'g> {
             Count::Army => ctx.faction.map_or(0.0, |f| {
                 self.troops.iter().filter(|t| t.faction == f).count() as f64
             }),
+            Count::Techs => ctx
+                .faction
+                .map_or(0.0, |f| self.known[f].iter().filter(|&&k| k).count() as f64),
             Count::Idle => ctx.faction.map_or(0.0, |f| {
                 self.troops
                     .iter()
@@ -889,7 +1002,10 @@ impl<'g> World<'g> {
             Effect::Log { metric, value } => self.logs[metric] += value,
             Effect::Raise { troop } => {
                 if let Some((f, p)) = fp {
-                    self.raise(f, troop, p);
+                    let needs = g.war.troops[troop].requires;
+                    if needs.map_or(true, |t| self.known[f][t]) {
+                        self.raise(f, troop, p);
+                    }
                 }
             }
             Effect::March { count } => {
@@ -1447,6 +1563,15 @@ impl<'g> World<'g> {
                 s.insert(
                     format!("territory.{}", g.factions[h].id),
                     self.factions[h].territory as f64,
+                );
+            }
+        }
+        if !g.war.techs.is_empty() {
+            s.insert("learnt".into(), self.total.learnt);
+            for (f, def) in g.factions.iter().enumerate() {
+                s.insert(
+                    format!("techs.{}", def.id),
+                    self.known[f].iter().filter(|&&k| k).count() as f64,
                 );
             }
         }

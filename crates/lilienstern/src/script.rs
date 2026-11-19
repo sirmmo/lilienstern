@@ -151,6 +151,8 @@ pub enum Cond {
     /// The faction's relation with the place's owner (false when nobody holds it, or the
     /// faction does).
     Relation(Relation),
+    /// The faction knows a tech.
+    Tech(usize),
 }
 
 /// Numbers about troops, for conditions and weights. Strengths count a full troop as 1.
@@ -166,6 +168,8 @@ pub enum Count {
     Army,
     /// How many of them have no orders.
     Idle,
+    /// How many techs the faction knows.
+    Techs,
 }
 
 impl Count {
@@ -176,6 +180,7 @@ impl Count {
             "threat" => Count::Threat,
             "army" => Count::Army,
             "idle" => Count::Idle,
+            "techs" => Count::Techs,
             _ => return None,
         })
     }
@@ -392,7 +397,7 @@ fn unit(rules: &Rules, c: &Ctx, id: &str) -> Result<usize, Error> {
         .ok_or_else(|| c.err(format!("there is no unit {id:?}")))
 }
 
-fn cond(rules: &mut Rules, c: &Ctx, i: usize) -> Result<Cond, Error> {
+fn cond(rules: &mut Rules, war: &War, c: &Ctx, i: usize) -> Result<Cond, Error> {
     let i = skip_target(c, i);
     Ok(match c.word(i)? {
         "map" => Cond::Map {
@@ -457,6 +462,13 @@ fn cond(rules: &mut Rules, c: &Ctx, i: usize) -> Result<Cond, Error> {
         },
         "chance" => Cond::Chance(c.num(i + 1)?.clamp(0.0, 1.0)),
         "relation" => Cond::Relation(relation(c, i + 1)?),
+        "tech" => {
+            let id = c.word(i + 1)?;
+            Cond::Tech(
+                war.tech(id)
+                    .ok_or_else(|| c.err(format!("there is no tech {id:?}")))?,
+            )
+        }
         w => match Count::parse(w) {
             Some(what) => Cond::Count {
                 what,
@@ -685,12 +697,16 @@ pub fn compile(
         for l in &b.lines {
             let c = Ctx { file, line: l };
             match l.words[0].as_str() {
-                "if" => conds.push(cond(rules, &c, 1)?),
+                "if" => conds.push(cond(rules, war, &c, 1)?),
                 "chance" => conds.push(Cond::Chance(c.num(1)?.clamp(0.0, 1.0))),
                 "do" => {
                     let e = effect(rules, script, war, &c, 1)?;
                     if let (true, Effect::Raise { troop }) = (decision, &e) {
                         costs.extend(war.troops[*troop].cost.iter().copied());
+                        // A troop that needs a tech: so does raising it.
+                        if let Some(t) = war.troops[*troop].requires {
+                            conds.push(Cond::Tech(t));
+                        }
                     }
                     effects.push(e);
                 }

@@ -23,6 +23,7 @@ import os
 import subprocess
 import tempfile
 import time
+import urllib.parse
 import urllib.request
 import zipfile
 
@@ -37,6 +38,30 @@ TOPO = "https://api.opentopodata.org/v1/srtm90m?locations="
 AGENT = {"User-Agent": "lilienstern-tools (https://github.com/sirmmo/lilienstern)"}
 GRID = 0.004          # degrees, about 400 m
 SAMPLES = 16          # elevation samples per place
+# Universities founded before 1800 in the Italy of 1871, by the circondario of their city:
+# Bologna (1088), Modena (1175), Padova (1222), Napoli (1224), Siena (1240), Roma (1303),
+# Perugia (1308), Camerino (1336), Pisa (1343), Firenze (1349), Pavia (1361), Ferrara (1391),
+# Torino (1404), Catania (1434), Genova (1481), Urbino (1506), Macerata (1540), Messina (1548),
+# Sassari (1562), Parma (1601), Cagliari (1606); and the medical school of Salerno.
+UNIVERSITIES = ["Bologna", "Modena", "Padova", "Napoli", "Siena", "Roma", "Perugia", "Camerino", "Pisa",
+                "Firenze", "Pavia", "Ferrara", "Torino", "Catania", "Genova", "Urbino", "Macerata", "Messina",
+                "Sassari", "Parma", "Cagliari", "Salerno"]
+# The capital of each 1871 province, by the name it had then, and the name Wikidata knows the
+# comune by (for its coordinates).
+CAPITALS = {
+    "Porto Maurizio": ("Porto Maurizio", "Imperia"), "Reggio nell'Emilia": ("Reggio nell'Emilia", "Reggio Emilia"),
+    "Pesaro e Urbino": ("Pesaro", "Pesaro"), "Massa e Carrara": ("Massa", "Massa"), "Umbria": ("Perugia", "Perugia"),
+    "Terra del Lavoro": ("Caserta", "Caserta"), "Principato Ulteriore": ("Avellino", "Avellino"),
+    "Principato Citeriore": ("Salerno", "Salerno"), "Aquila degli Abruzzi": ("Aquila", "L'Aquila"),
+    "Abruzzo Ulteriore I": ("Teramo", "Teramo"), "Abruzzo Citeriore": ("Chieti", "Chieti"),
+    "Molise": ("Campobasso", "Campobasso"), "Capitanata": ("Foggia", "Foggia"), "Bari delle Puglie": ("Bari", "Bari"),
+    "Terra d'Otranto": ("Lecce", "Lecce"), "Basilicata": ("Potenza", "Potenza"),
+    "Calabria Citeriore": ("Cosenza", "Cosenza"), "Calabria Ulteriore II": ("Catanzaro", "Catanzaro"),
+    "Calabria Ulteriore I": ("Reggio di Calabria", "Reggio Calabria"), "Girgenti": ("Girgenti", "Agrigento"),
+}
+# Other cities worth a name on the map: the families' seats that were not capitals.
+OTHER_CITIES = [("Taranto", "Taranto"), ("Rimini", "Rimini"), ("Urbino", "Urbino"), ("Oristano", "Oristano")]
+WIKIDATA = "https://query.wikidata.org/sparql"
 ATTRIBUTION = ("Boundaries: ISTAT, confini statistico-amministrativi 1871 (CC BY). "
                "Population: 1871 census (ISTAT), via DEMOPAST. Elevation: SRTM via OpenTopoData.")
 
@@ -233,6 +258,25 @@ def merge_same_code(features, field):
     return out
 
 
+def city_points(cities):
+    """[lon, lat] of each comune (by its Wikidata name), from one Wikidata query."""
+    names = sorted({wd for _, wd in cities})
+    values = " ".join('"' + n.replace('"', '\\"') + '"@it' for n in names)
+    query = ("SELECT ?label ?coord WHERE { VALUES ?label { " + values + " } "
+             "?item rdfs:label ?label; wdt:P31 wd:Q747074; wdt:P625 ?coord. }")
+    url = WIKIDATA + "?" + urllib.parse.urlencode({"query": query, "format": "json"})
+    with urllib.request.urlopen(urllib.request.Request(url, headers=AGENT), timeout=120) as r:
+        rows = json.load(r)["results"]["bindings"]
+    out = {}
+    for row in rows:
+        lon, lat = row["coord"]["value"][6:-1].split()
+        out.setdefault(row["label"]["value"], [round(float(lon), 4), round(float(lat), 4)])
+    missing = [n for n in names if n not in out]
+    if missing:
+        raise SystemExit(f"no coordinates in Wikidata for {missing}")
+    return out
+
+
 def write(name, features, title):
     os.makedirs(OUT, exist_ok=True)
     path = os.path.join(OUT, name)
@@ -298,6 +342,14 @@ def main():
             d = f["data"]
             d["province"] = pd["name"] if pd else None
             d["population"] = round(rest * d["area"] / a) + city.get(d["name"], 0)
+    missing = [u for u in UNIVERSITIES if u not in {f["data"]["name"] for f in circondari}]
+    if missing:
+        raise SystemExit(f"universities in no circondario: {missing}")
+    for f in circondari:
+        f["data"]["university"] = 1 if f["data"]["name"] in UNIVERSITIES else 0
+    for pf in provinces:
+        pf["data"]["university"] = sum(f["data"]["university"] for f in circondari
+                                       if f["data"]["province_code"] == pf["data"]["istat"])
     big = set(city_pop)
     for layer in (provinces, circondari):
         dens = [f["data"]["population"] / max(f["data"]["area"], 1e-6) for f in layer]
@@ -319,9 +371,30 @@ def main():
                     "wealth": round(min(100.0, w + (15 if has_city else 0)), 1),
                     "elevation": h,
                     "relief": relief,
+                    "university": d["university"],
                 },
                 "geometry": f["geometry"],
             }
+    # The main cities: every province's capital (and the families' other seats), with their
+    # 1871 names; provinces carry their capital's name.
+    cities = []
+    for f in provinces:
+        name = f["data"]["name"]
+        shown, wd = CAPITALS.get(name, (name, name))
+        f["out"]["properties"]["capital"] = shown
+        cities.append((shown, wd, name, "capital"))
+    cities += [(shown, wd, None, "city") for shown, wd in OTHER_CITIES]
+    points = city_points([(shown, wd) for shown, wd, _, _ in cities])
+    city_features = []
+    for shown, wd, province, kind in cities:
+        lon, lat = points[wd]
+        if province is None:
+            province = next((pf["data"]["name"] for pf in provinces if inside(lon, lat, pf["geometry"])), None)
+        city_features.append({"type": "Feature", "properties": {
+            "name": shown, "province": province, "kind": kind,
+            "population": city_pop.get(shown) or city_pop.get(wd), "big": shown in city_pop or wd in city_pop,
+        }, "geometry": {"type": "Point", "coordinates": [lon, lat]}})
+    write("italia-cities.geojson", city_features, "Italy, main cities (1871 names)")
     write("italia-1871-province.geojson", [f["out"] for f in provinces], "Italy, provinces of 1871 (ISTAT)")
     write("italia-1871-circondari.geojson", [f["out"] for f in circondari],
           "Italy, circondari and distretti of 1871 (ISTAT)")

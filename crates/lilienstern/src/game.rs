@@ -45,7 +45,7 @@ use serde::Deserialize;
 use crate::city::CityDef;
 use crate::params::Params;
 use crate::script::{self, Kind, Script};
-use crate::war::{TerrainToml, TroopToml, War, WarToml};
+use crate::war::{ResearchToml, TechToml, TerrainToml, TroopToml, War, WarToml};
 
 fn d_days() -> u32 {
     730
@@ -102,6 +102,10 @@ struct GameToml {
     terrains: Vec<TerrainToml>,
     #[serde(default, rename = "troop")]
     troops: Vec<TroopToml>,
+    #[serde(default)]
+    research: Option<ResearchToml>,
+    #[serde(default, rename = "tech")]
+    techs: Vec<TechToml>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -199,6 +203,9 @@ struct FactionToml {
     /// the map does not have leaves the choice to `hq_field` and `hq_spacing`.
     #[serde(default)]
     capital: Option<toml::Value>,
+    /// Techs known from the start.
+    #[serde(default)]
+    start_techs: Vec<String>,
 }
 
 /// How gangs hold places and fight over them, every day:
@@ -336,6 +343,7 @@ pub struct FactionDef {
     pub start_troops: Vec<usize>,
     /// Names the headquarters may have, tried in turn.
     pub capital: Vec<String>,
+    pub start_techs: Vec<usize>,
 }
 
 #[derive(Clone, Debug)]
@@ -500,7 +508,14 @@ impl Game {
         for u in &g.units {
             rules.declare_unit(&u.id, u.name.as_deref().unwrap_or(&u.id));
         }
-        let war = War::build(&mut rules, &g.war, &g.terrains, &g.troops)?;
+        let war = War::build(
+            &mut rules,
+            &g.war,
+            &g.terrains,
+            &g.troops,
+            g.research.as_ref(),
+            &g.techs,
+        )?;
 
         let mut factions = Vec::new();
         for f in &g.factions {
@@ -528,6 +543,13 @@ impl Game {
                 );
             }
             let capitals = per_copy(&f.capital, f.count, &f.id, "capital")?;
+            let mut start_techs = Vec::new();
+            for t in &f.start_techs {
+                start_techs.push(
+                    war.tech(t)
+                        .ok_or_else(|| format!("faction {}: there is no tech {t:?}", f.id))?,
+                );
+            }
             let teams: Vec<String> = match &f.team {
                 None => Vec::new(),
                 Some(toml::Value::String(s)) if f.count > 1 => {
@@ -611,6 +633,7 @@ impl Game {
                                 .collect()
                         })
                         .unwrap_or_default(),
+                    start_techs: start_techs.clone(),
                 });
             }
         }
@@ -668,13 +691,14 @@ impl Game {
         let s = &self.script;
         let gangs = self.factions.iter().filter(|f| f.kind.holds()).count();
         format!(
-            "{}: {} maps, {} resources, {} units, {} troops, {} terrains, {} unit rules, {} map rules, {} agent rules, {} events, {} decisions, {} modifiers, {} factions ({} hold territory), {} metrics",
+            "{}: {} maps, {} resources, {} units, {} troops, {} terrains, {} techs, {} unit rules, {} map rules, {} agent rules, {} events, {} decisions, {} modifiers, {} factions ({} hold territory), {} metrics",
             self.name,
             r.maps.len(),
             r.resources.len(),
             r.units.len(),
             self.war.troops.len(),
             self.war.terrains.len(),
+            self.war.techs.len(),
             r.unit_rules.len(),
             r.map_rules.len(),
             r.agent_rules.len(),

@@ -245,6 +245,40 @@ only between factions at war.
 A person plays troops with `World::order(faction, troop, place)` (and `World::route` to see
 the way and the days first); the AI moves them with `do march`.
 
+### Techs: [research], [[tech]]
+
+A tech tree is data too. Each faction researches one tech at a time: every day, all of its
+research resource (made by scripts, like any global resource) goes into it, and when the
+points reach the tech's cost it is known (what is left over counts for the next one).
+
+```toml
+[research]
+resource = "Learning"
+
+[[tech]]
+id = "chivalry"
+name = "Chivalry"
+cost = 240
+requires = ["horses"]   # techs it needs (a tech cannot need itself, even through others)
+weight = 1              # how much the AI wants it
+damage = 10             # bonuses to the faction's troops: damage %, defense (stars), speed %,
+troops = ["fast"]       # occupy %, upkeep % (negative: cheaper); for these troops (default: all)
+description = "Knights, and the charge."
+```
+
+* A troop with `requires = "chivalry"` can only be raised by factions that know it; a decision
+  that raises it gets the condition by itself.
+* Scripts test techs with `if tech chivalry` (and count them with `techs`), so a tech can open
+  decisions or change income: `event study / scope place / if tech universities / do global
+  Learning add 0.025`.
+* `start_techs = ["horses"]` in a `[[faction]]`: known from the start.
+* The AI picks its next tech at random, in proportion to the techs' `weight`; a player picks
+  with `World::set_research` (the browser's `research` request). Until a player picks, its
+  points wait in its account.
+
+An era file can bring its own decisions: `scripts = ["$eras_dir/medieval.lil"]` in an included
+file adds to the game's scripts (Marches' medieval era raises arquebusiers that way).
+
 ## GlassBox blocks
 
 ```text
@@ -358,6 +392,8 @@ always read the target.
 | `army <cmp> n` | how many troops the faction has |
 | `idle <cmp> n` | how many of them have no orders |
 | `relation war\|peace\|ally` | the faction's relation with the place's holder (false if nobody, or the faction itself, holds it) |
+| `tech T` | the faction knows tech T |
+| `techs <cmp> n` | how many techs it knows |
 
 `<cmp>` is `atLeast`, `atMost`, `greater`, `less` or `is`.
 
@@ -392,7 +428,7 @@ always read the target.
 | `weight unowned k` | k if nobody holds the target |
 | `weight units [U] k` | k x the units there |
 | `weight global R k` | k x the faction's resource (careful: unbounded quantities end up outweighing everything) |
-| `weight troops\|foes\|threat\|army\|idle k` | k x the count, as in the conditions |
+| `weight troops\|foes\|threat\|army\|idle\|techs k` | k x the count, as in the conditions |
 
 A decision whose score is not positive is not taken.
 
@@ -407,4 +443,5 @@ share of places that were ever hotspots, and how often each decision was taken
 
 Games with troops add `battles` (places where troops fought, per day), `losses` (health lost
 in battle), `troops` (alive) to the series, and `battles`, `losses`, `raised`, `destroyed`,
-`troops` and each holder's `territory.<faction>` to the summary.
+`troops` and each holder's `territory.<faction>` to the summary; games with techs add `learnt`
+and each faction's `techs.<faction>`.

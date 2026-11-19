@@ -229,7 +229,8 @@ fn marches(era: &str) -> Game {
 fn marches_runs_in_both_eras_and_is_deterministic() {
     for era in ["medieval", "future"] {
         let g = marches(era);
-        assert_eq!(g.war.troops.len(), 4);
+        // Medieval also has arquebusiers, once gunpowder is known.
+        assert_eq!(g.war.troops.len(), if era == "medieval" { 5 } else { 4 });
         let run = |seed| {
             let mut w = World::new(&g, seed).unwrap();
             w.run(300);

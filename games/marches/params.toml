@@ -3,6 +3,7 @@
 
 # The land
 era = "medieval"          # which troops and terrain: eras/medieval.toml or eras/future.toml
+eras_dir = "eras"         # where the era files are (their scripts are named from it)
 provinces = 240           # about how many provinces
 radius_km = 250
 map_seed = -1             # -1: a new land for every seed; a number: the same land every time
@@ -26,6 +27,7 @@ max_army = 14             # no more troops than this
 tax = 0.12
 rich_tax = 0.12           # more where wealth is above 50
 recruits = 0.08
+learning = 0.025          # research points (twice with the Universities tech)
 
 # What decisions cost and do
 settle_cost = 12

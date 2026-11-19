@@ -13,7 +13,9 @@ MapLibre style), and in the browser.
 
 Factions can raise **troops**, declared in the game's data like everything else (levies and
 knights, or militia and hovertanks): they march across the map on the shared daily clock,
-slowed by terrain, share places with allies, and fight enemies where they meet.
+slowed by terrain, share places with allies, and fight enemies where they meet. They research
+**tech trees**, also data: techs unlock troops and decisions and make troops stronger, faster
+or cheaper.
 
 **[Play Gangland: Bologna](https://ingmmo.com/lilienstern/gangland-bologna/)**: run a gang in
 Bologna's 2,606 census sections, in your browser. **[Play Marches](https://ingmmo.com/lilienstern/marches/)**:
@@ -95,8 +97,10 @@ See [the experiment](docs/EXPERIMENTS.md#marches-experiment) on alliances and er
 Marches on a real map: Italy as ISTAT drew it for the 1871 census (284 circondari and
 distretti, or 69 provinces), largely the old provinces of the Italian states, taken as the
 lands fought over in the centuries before. Up to 16 noble families start at their historical
-seats; each area's taxes and recruits follow its 1871 population, its terrain its real
-elevation (SRTM), and Sicily and Sardinia are reached by sea. The decisions and troops are
+seats, under their coats of arms (from Wikimedia Commons, [credits](web/italia/crests/README.md));
+each area's taxes, recruits and learning follow its 1871 population (and its old university, if
+it has one), its terrain its real elevation (SRTM), and Sicily and Sardinia are reached by sea.
+The map names the provinces' capitals, with their 1871 names (Girgenti, Porto Maurizio). The decisions and troops are
 Marches' (`games/italia` includes them); `tools/italia.py` builds the maps
 ([sources](games/italia/maps/README.md)).
 

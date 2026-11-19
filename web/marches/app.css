@@ -89,6 +89,30 @@ h3 { margin: 12px 0 4px; font-size: 12px; text-transform: uppercase; letter-spac
 @keyframes pulse { from { transform: scale(.85); } to { transform: scale(1.15); } }
 .tip { position: absolute; z-index: 5; pointer-events: none; background: rgba(20, 18, 26, .88); color: #fff; padding: 2px 8px; border-radius: 6px; font-size: 12px; white-space: nowrap; }
 
+/* Research */
+#research { margin: 6px 0; }
+#research .bar span:first-child { min-width: 80px; }
+#research button { width: 100%; margin-top: 4px; }
+#research .fill { background: var(--accent); }
+.sheet.wide { max-width: 1100px; position: relative; }
+.tree { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 6px; }
+.tree .col { display: flex; flex-direction: column; gap: 8px; min-width: 190px; flex: 1; }
+.tech { display: flex; flex-direction: column; align-items: flex-start; text-align: left; gap: 2px; padding: 8px 10px; }
+.tech .what { font-size: 12px; color: var(--muted); }
+.tech .fx { font-size: 12px; }
+.tech .needs { font-size: 11px; color: var(--muted); font-style: italic; }
+.tech.known { border-color: #3c9a5f; background: rgba(60, 154, 95, .12); opacity: 1; }
+.tech.current { border: 2px solid var(--accent); opacity: 1; }
+.tech.open { border-color: var(--accent); }
+.tech.locked { opacity: .55; }
+
+/* Crests (Italia) */
+.crest { width: 16px; height: 18px; object-fit: contain; flex: none; vertical-align: middle; }
+.realms .crest { width: 20px; height: 22px; }
+#realmColor.has-crest { width: 22px; height: 26px; border: 0; border-radius: 0; background-color: transparent !important;
+  background-size: contain; background-position: center; background-repeat: no-repeat; }
+.seat-crest { width: 30px; height: 34px; background: center / contain no-repeat; filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .6)); pointer-events: none; }
+
 /* Several players */
 .lobby { margin: 10px 0; padding: 10px 12px; border: 2px solid var(--accent); border-radius: 10px; background: var(--soft); }
 .lobby .code { font-size: 18px; }

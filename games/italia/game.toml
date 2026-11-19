@@ -27,6 +27,10 @@ init = "elevation"
 min = -100
 
 [[map]]
+id = "University"         # universities founded before 1800
+init = "university"
+
+[[map]]
 id = "Fort"
 max = 3
 

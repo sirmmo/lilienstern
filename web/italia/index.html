@@ -117,7 +117,12 @@
   window.GAME = {
     id: 'italia',
     files: (p) => ['params.toml', 'game.toml', 'italia.lil', 'marches/realms.lil', 'marches/eras/medieval.toml',
-      'marches/eras/future.toml', `maps/italia-1871-${p.map}.geojson`],
+      'marches/eras/medieval.lil', 'marches/eras/future.toml', `maps/italia-1871-${p.map}.geojson`],
+    cities: 'maps/italia-cities.geojson', // the provinces' capitals, with their 1871 names
+    // The families' coats of arms (crests/README.md says where each comes from).
+    crests: Object.fromEntries(['Savoia', 'Visconti', 'Della Scala', 'Medici', 'Este', 'Colonna', 'Aragona', 'Chiaramonte',
+      'Doria', 'Gonzaga', 'Montefeltro', 'Bentivoglio', 'Orsini', 'Arborea', 'Sanseverino', 'Malatesta']
+      .map((n) => [n, `crests/${n.toLowerCase().replace(/ /g, '-')}.png`])),
     probe: { map: 'province', families: 16, days: 1 },
     params: () => ({ era: document.querySelector('input[name=era]:checked').value,
       map: document.querySelector('input[name=map]:checked').value,

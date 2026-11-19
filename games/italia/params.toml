@@ -5,6 +5,7 @@
 map = "circondari"        # "circondari" (284 circondari and distretti) or "province" (69 provinces)
 basemap = "none"          # under the map viewer: "none", "osm", or a MapLibre style
 era = "medieval"          # troops: ../marches/eras/medieval.toml or future.toml
+eras_dir = "../marches/eras"
 days = 1825               # five years
 
 # The families
@@ -29,6 +30,9 @@ recruits = 0
 tax_per_thousand = 0.0017
 rich_tax_per_thousand = 0.0008   # more where wealth is above 60
 recruits_per_thousand = 0.00085
+learning = 0                     # Marches' flat learning is off: Italia's follows the people
+learning_per_thousand = 0.00025
+learning_per_university = 0.2    # each university (see maps/README.md)
 
 # What decisions cost and do (Marches' decisions)
 settle_cost = 12

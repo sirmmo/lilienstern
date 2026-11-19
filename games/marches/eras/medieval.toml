@@ -1,4 +1,7 @@
-# The medieval era: levies, archers, men-at-arms and knights. Distances in km, speeds in km a day.
+# The medieval era: levies, archers, men-at-arms and knights, and arquebusiers once gunpowder is
+# known. Distances in km, speeds in km a day.
+
+scripts = ["$eras_dir/medieval.lil"]   # the decision that raises arquebusiers
 
 [war]
 distance = "km"
@@ -49,7 +52,7 @@ icon = "L"
 speed = 25
 cost = { Funds = 15, Recruits = 10 }
 upkeep = { Funds = 0.12 }
-damage = { light = 45, ranged = 55, heavy = 15, fast = 10 }
+damage = { light = 45, ranged = 55, heavy = 15, fast = 10, gunners = 50 }
 occupy = 3
 description = "Cheap farmers with spears: they hold ground, and little else."
 
@@ -60,7 +63,7 @@ icon = "A"
 speed = 25
 cost = { Funds = 30, Recruits = 8 }
 upkeep = { Funds = 0.25 }
-damage = { light = 60, ranged = 45, heavy = 30, fast = 50 }
+damage = { light = 60, ranged = 45, heavy = 30, fast = 50, gunners = 55 }
 occupy = 1
 description = "Shoot down levies and horses; weak in a siege."
 
@@ -71,7 +74,7 @@ icon = "M"
 speed = 20
 cost = { Funds = 45, Recruits = 10 }
 upkeep = { Funds = 0.4 }
-damage = { light = 75, ranged = 70, heavy = 50, fast = 45 }
+damage = { light = 75, ranged = 70, heavy = 50, fast = 45, gunners = 65 }
 occupy = 4
 description = "Armoured foot: slow, strong, the best at taking a place."
 
@@ -83,6 +86,113 @@ icon = "K"
 speed = 45
 cost = { Funds = 70, Recruits = 5 }
 upkeep = { Funds = 0.6 }
-damage = { light = 85, ranged = 80, heavy = 55, fast = 50 }
+damage = { light = 85, ranged = 80, heavy = 55, fast = 50, gunners = 75 }
+requires = "chivalry"
 occupy = 2
 description = "Fast and deadly on open ground; no use in the mountains."
+
+[[troop]]
+id = "gunners"
+name = "Arquebusiers"
+icon = "G"
+speed = 22
+cost = { Funds = 55, Recruits = 8 }
+upkeep = { Funds = 0.45 }
+damage = { light = 70, ranged = 60, heavy = 80, fast = 90, gunners = 55 }
+occupy = 2
+requires = "gunpowder"
+description = "Firearms: they pierce armour and stop a charge."
+
+# ---- Research: Learning (from the provinces, more with universities) goes into one tech at a time.
+
+[research]
+resource = "Learning"
+
+[[tech]]
+id = "horses"
+name = "Horse breeding"
+cost = 120
+speed = 5
+description = "Pack horses and remounts: every troop moves a little faster."
+
+[[tech]]
+id = "chivalry"
+name = "Chivalry"
+cost = 240
+requires = ["horses"]
+damage = 10
+troops = ["fast"]
+description = "Knights, and the charge."
+
+[[tech]]
+id = "masonry"
+name = "Masonry"
+cost = 160
+defense = 1
+troops = ["light", "ranged"]
+description = "Field works and stone towers: levies and archers defend better."
+
+[[tech]]
+id = "longbow"
+name = "Longbow"
+cost = 200
+damage = 25
+troops = ["ranged"]
+description = "Archers hit harder, and from further."
+
+[[tech]]
+id = "mail"
+name = "Mail armour"
+cost = 200
+defense = 1
+troops = ["heavy"]
+description = "Men-at-arms in mail."
+
+[[tech]]
+id = "pikes"
+name = "Pike squares"
+cost = 320
+requires = ["mail"]
+damage = 30
+occupy = 20
+troops = ["light"]
+description = "Levies with pikes stand against horse, and hold ground."
+
+[[tech]]
+id = "roads"
+name = "Roads"
+cost = 180
+speed = 15
+description = "Paved roads between the towns: every troop marches faster."
+
+[[tech]]
+id = "banking"
+name = "Banking"
+cost = 300
+requires = ["roads"]
+upkeep = -25
+description = "Bills of exchange and loans: troops cost a quarter less to keep."
+
+[[tech]]
+id = "condottieri"
+name = "Condottieri"
+cost = 360
+requires = ["banking"]
+occupy = 25
+damage = 10
+troops = ["heavy", "fast"]
+description = "Hired captains and their companies: heavy troops and knights take places faster."
+
+[[tech]]
+id = "universities"
+name = "Universities"
+cost = 240
+weight = 1.5
+description = "Studia and scholars: more learning from every province."
+
+[[tech]]
+id = "gunpowder"
+name = "Gunpowder"
+cost = 520
+requires = ["masonry", "longbow"]
+description = "Arquebusiers."

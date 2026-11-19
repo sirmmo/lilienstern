@@ -31,6 +31,20 @@
 //! upkeep = { Gold = 0.5 }     # per day
 //! damage = { light = 70, heavy = 50, fast = 40 }  # % of a full troop, by the target's id
 //! occupy = 4                  # presence a full troop adds per day where no enemy troop is
+//! requires = "chivalry"       # a tech the faction must know to raise it
+//!
+//! [research]
+//! resource = "Learning"       # a global resource: each day, all of it goes into the current tech
+//!
+//! [[tech]]
+//! id = "chivalry"
+//! name = "Chivalry"
+//! cost = 120                  # points of the research resource
+//! requires = ["horses"]       # techs it needs
+//! weight = 1                  # how much the AI wants it
+//! damage = 10                 # bonuses, for the troops in `troops` (default: all): damage %,
+//! defense = 1                 # defence stars, speed %, occupy %, upkeep % (negative: cheaper)
+//! troops = ["fast"]
 //! ```
 
 use std::collections::BTreeMap;
@@ -130,6 +144,90 @@ pub struct TroopToml {
     /// A short mark for viewers (a letter or a symbol).
     #[serde(default)]
     icon: Option<String>,
+    /// A tech the faction must know to raise it.
+    #[serde(default)]
+    requires: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ResearchToml {
+    resource: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TechToml {
+    id: String,
+    #[serde(default)]
+    name: Option<String>,
+    cost: f64,
+    #[serde(default)]
+    requires: Vec<String>,
+    #[serde(default = "d_one")]
+    weight: f64,
+    #[serde(default)]
+    description: String,
+    #[serde(default)]
+    damage: f64,
+    #[serde(default)]
+    defense: f64,
+    #[serde(default)]
+    speed: f64,
+    #[serde(default)]
+    occupy: f64,
+    #[serde(default)]
+    upkeep: f64,
+    /// The troop kinds the bonuses apply to (default: all).
+    #[serde(default)]
+    troops: Vec<String>,
+}
+
+/// What a faction's techs add to one kind of its troops: multipliers, and defence stars.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Bonus {
+    pub damage: f64,
+    pub defense: f64,
+    pub speed: f64,
+    pub occupy: f64,
+    pub upkeep: f64,
+}
+
+impl Default for Bonus {
+    fn default() -> Self {
+        Bonus {
+            damage: 1.0,
+            defense: 0.0,
+            speed: 1.0,
+            occupy: 1.0,
+            upkeep: 1.0,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct TechDef {
+    pub id: String,
+    pub name: String,
+    pub cost: f64,
+    /// Techs it needs (indices).
+    pub requires: Vec<usize>,
+    pub weight: f64,
+    pub description: String,
+    /// Percent (damage, speed, occupy, upkeep) and stars (defense).
+    pub damage: f64,
+    pub defense: f64,
+    pub speed: f64,
+    pub occupy: f64,
+    pub upkeep: f64,
+    /// Troop kinds the bonuses apply to; empty: all.
+    pub troops: Vec<usize>,
+}
+
+impl TechDef {
+    pub fn applies(&self, kind: usize) -> bool {
+        self.troops.is_empty() || self.troops.contains(&kind)
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -198,6 +296,8 @@ pub struct TroopDef {
     pub occupy: f64,
     pub description: String,
     pub icon: String,
+    /// A tech the faction must know to raise it.
+    pub requires: Option<usize>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -218,11 +318,38 @@ pub struct War {
     pub moves: Vec<String>,
     pub terrains: Vec<TerrainDef>,
     pub troops: Vec<TroopDef>,
+    /// The global resource research is made of, when the game has techs.
+    pub research: Option<usize>,
+    pub techs: Vec<TechDef>,
 }
 
 impl War {
     pub fn troop(&self, id: &str) -> Option<usize> {
         self.troops.iter().position(|t| t.id == id)
+    }
+
+    pub fn tech(&self, id: &str) -> Option<usize> {
+        self.techs.iter().position(|t| t.id == id)
+    }
+
+    /// What the techs in `known` add to troops of kind `kind`.
+    pub fn bonus(&self, known: &[bool], kind: usize) -> Bonus {
+        let mut b = Bonus::default();
+        let (mut damage, mut speed, mut occupy, mut upkeep) = (0.0, 0.0, 0.0, 0.0);
+        for (t, def) in self.techs.iter().enumerate() {
+            if known.get(t).copied().unwrap_or(false) && def.applies(kind) {
+                damage += def.damage;
+                b.defense += def.defense;
+                speed += def.speed;
+                occupy += def.occupy;
+                upkeep += def.upkeep;
+            }
+        }
+        b.damage = (1.0 + damage / 100.0).max(0.0);
+        b.speed = (1.0 + speed / 100.0).max(0.05);
+        b.occupy = (1.0 + occupy / 100.0).max(0.0);
+        b.upkeep = (1.0 + upkeep / 100.0).max(0.0);
+        b
     }
 
     /// Builds the troops, terrains and war settings, declaring the resources and maps they use.
@@ -231,6 +358,8 @@ impl War {
         w: &WarToml,
         terrains: &[TerrainToml],
         troops: &[TroopToml],
+        research: Option<&ResearchToml>,
+        techs: &[TechToml],
     ) -> Result<War, String> {
         let km = match w.distance.as_str() {
             "steps" => false,
@@ -285,6 +414,7 @@ impl War {
                 damage: Vec::new(),
                 occupy: t.occupy,
                 description: t.description.clone(),
+                requires: None,
                 icon: t.icon.clone().unwrap_or_else(|| {
                     t.name
                         .as_deref()
@@ -309,6 +439,80 @@ impl War {
             }
             defs[i].damage = dmg;
         }
+        // Techs: ids first, so that `requires` can name any of them.
+        let mut tech_defs: Vec<TechDef> = Vec::new();
+        for t in techs {
+            if tech_defs.iter().any(|d| d.id == t.id) {
+                return Err(format!("tech {} is declared twice", t.id));
+            }
+            if t.cost <= 0.0 {
+                return Err(format!("tech {}: cost must be above 0", t.id));
+            }
+            tech_defs.push(TechDef {
+                id: t.id.clone(),
+                name: t.name.clone().unwrap_or_else(|| t.id.clone()),
+                cost: t.cost,
+                requires: Vec::new(),
+                weight: t.weight.max(0.0),
+                description: t.description.clone(),
+                damage: t.damage,
+                defense: t.defense,
+                speed: t.speed,
+                occupy: t.occupy,
+                upkeep: t.upkeep,
+                troops: Vec::new(),
+            });
+        }
+        let ids: Vec<String> = tech_defs.iter().map(|d| d.id.clone()).collect();
+        let tech_index = |what: &str, id: &str| {
+            ids.iter()
+                .position(|d| d == id)
+                .ok_or_else(|| format!("{what}: there is no tech {id:?}"))
+        };
+        let mut requires = Vec::new();
+        for t in techs {
+            let mut r = Vec::new();
+            for id in &t.requires {
+                r.push(tech_index(&format!("tech {}", t.id), id)?);
+            }
+            let mut kinds = Vec::new();
+            for id in &t.troops {
+                kinds.push(
+                    defs.iter()
+                        .position(|d| d.id == *id)
+                        .ok_or_else(|| format!("tech {}: there is no troop {id:?}", t.id))?,
+                );
+            }
+            requires.push((r, kinds));
+        }
+        for (d, (r, k)) in tech_defs.iter_mut().zip(requires) {
+            d.requires = r;
+            d.troops = k;
+        }
+        for (i, t) in troops.iter().enumerate() {
+            if let Some(id) = &t.requires {
+                defs[i].requires = Some(tech_index(&format!("troop {}", t.id), id)?);
+            }
+        }
+        // A tech that needs itself, through others, could never be learnt.
+        for start in 0..tech_defs.len() {
+            let mut seen = vec![false; tech_defs.len()];
+            let mut stack = tech_defs[start].requires.clone();
+            while let Some(t) = stack.pop() {
+                if t == start {
+                    return Err(format!("tech {} needs itself", tech_defs[start].id));
+                }
+                if !seen[t] {
+                    seen[t] = true;
+                    stack.extend(tech_defs[t].requires.iter().copied());
+                }
+            }
+        }
+        let research = match research {
+            Some(r) => Some(rules.declare_resource(&r.resource, glassbox::Scope::Global)?),
+            None if tech_defs.is_empty() => None,
+            None => return Err("techs need a [research] resource".into()),
+        };
         let mut tdefs = Vec::new();
         for t in terrains {
             if tdefs.iter().any(|d: &TerrainDef| d.id == t.id) {
@@ -355,6 +559,8 @@ impl War {
             moves,
             terrains: tdefs,
             troops: defs,
+            research,
+            techs: tech_defs,
         })
     }
 }
@@ -372,9 +578,19 @@ mod tests {
             terrain: Vec<TerrainToml>,
             #[serde(default)]
             troop: Vec<TroopToml>,
+            research: Option<ResearchToml>,
+            #[serde(default)]
+            tech: Vec<TechToml>,
         }
         let t: T = toml::from_str(text).map_err(|e| e.to_string())?;
-        War::build(&mut Rules::default(), &t.war, &t.terrain, &t.troop)
+        War::build(
+            &mut Rules::default(),
+            &t.war,
+            &t.terrain,
+            &t.troop,
+            t.research.as_ref(),
+            &t.tech,
+        )
     }
 
     #[test]
@@ -413,5 +629,38 @@ mod tests {
             .unwrap_err()
             .contains("hover"));
         assert!(parse("[war]\nrelation = \"ally\"\n").is_err());
+        let techs = "[research]\nresource = \"L\"\n[[troop]]\nid = \"a\"\nspeed = 1\n";
+        assert!(parse(&format!("{techs}[[tech]]\nid = \"x\"\ncost = 1\nrequires = [\"y\"]\n[[tech]]\nid = \"y\"\ncost = 1\nrequires = [\"x\"]\n"))
+            .unwrap_err()
+            .contains("needs itself"));
+        assert!(parse("[[tech]]\nid = \"x\"\ncost = 1\n")
+            .unwrap_err()
+            .contains("[research]"));
+    }
+
+    #[test]
+    fn techs_give_bonuses_and_unlock_troops() {
+        let w = parse(
+            "[research]\nresource = \"Learning\"\n\
+             [[troop]]\nid = \"foot\"\nspeed = 1\n\
+             [[troop]]\nid = \"horse\"\nspeed = 2\nrequires = \"riding\"\n\
+             [[tech]]\nid = \"riding\"\ncost = 50\n\
+             [[tech]]\nid = \"lances\"\ncost = 80\nrequires = [\"riding\"]\ndamage = 20\nspeed = 10\ntroops = [\"horse\"]\n\
+             [[tech]]\nid = \"bank\"\ncost = 40\nupkeep = -25\ndefense = 1\n",
+        )
+        .unwrap();
+        assert_eq!(w.troops[1].requires, Some(0));
+        assert_eq!(w.techs[1].requires, vec![0]);
+        let all = [true, true, true];
+        let horse = w.bonus(&all, 1);
+        assert!((horse.damage - 1.2).abs() < 1e-9 && (horse.speed - 1.1).abs() < 1e-9);
+        assert_eq!((horse.upkeep, horse.defense), (0.75, 1.0));
+        let foot = w.bonus(&all, 0);
+        assert_eq!(
+            (foot.damage, foot.speed),
+            (1.0, 1.0),
+            "lances are for horses"
+        );
+        assert_eq!(w.bonus(&[false; 3], 1), Bonus::default());
     }
 }
