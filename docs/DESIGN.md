@@ -212,11 +212,20 @@ players.
 
 **Several people on one map.** On one device, players take turns and the day runs after the
 last. Online, play is lockstep, as in OpenTactics: every browser runs the engine on the same
-commands in the host's order (decisions, orders, a player taking over or leaving a faction, the
-end of a day), and `World::fingerprint` (FNV-1a over the exact bits of the state, and the
-random generator's position) shows after each day that they still agree. A browser that
-disagrees, or joins late, replays the commands. WebAssembly's arithmetic is IEEE and identical
-in every browser, so the same commands give the same bits; nothing needs sending but commands.
+commands in the order the game server (`lilienstern-server`) gives them (decisions, orders,
+research, a player taking over or leaving a faction, the end of a day), and
+`World::fingerprint` (FNV-1a over the exact bits of the state, and the random generator's
+position) shows after each day that they still agree. A browser that disagrees replays the
+log; one that comes back after a dropped connection gets the commands it missed. WebAssembly's
+arithmetic is IEEE and identical in every browser, so the same commands give the same bits;
+nothing needs sending but commands.
+
+The server keeps rooms, not games: the seats, the log and the clock. It does not run the
+engine, on purpose: a refused command is refused by every browser alike and changes nothing,
+so the log can hold it; and a server with its own engine would have to be redeployed with every
+change to the rules or the engine, or every online game would fall out of step. (A first
+version had the host's browser as the room, over PeerJS and WebRTC: games died with the host's
+tab, and browsers behind some routers could not reach each other.)
 
 The browser game (`web/gangland-bologna`) runs the engine as WebAssembly. `lilienstern-web`
 exposes three functions with no generated glue: the page writes a JSON request into the
@@ -235,7 +244,8 @@ runs on all cores: the 64 runs of the Marches experiment take about 2 s on 40 co
 ## Next
 
 * **Saves** with stable ids (units, maps, resources by id, not position), so saves survive
-  changes to the rules. Saves would also let an online game outlive its host's tab.
+  changes to the rules. Saves would also let a browser join a long online game without
+  replaying it from the start.
 * **Events with choices**: options for a player, picked by weight for the AI.
 * **Diplomacy beyond war, peace and alliance**: offers the other side can refuse, vassals,
   relations that drift.

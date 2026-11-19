@@ -124,28 +124,38 @@ Marches and Italia take several people on the same map:
 * **On one device**: choose every family a person plays; each takes their turn (decisions and
   orders), and the day runs when the last one ends it.
 * **Online**: one player opens a room and gets a five-letter code (or a `?join=CODE` link);
-  friends join, pick a family each, and the host begins. Nothing goes through a game server:
-  [PeerJS](https://peerjs.com) (MIT, vendored in `web/marches/vendor`) only introduces the
-  browsers, then they talk directly over WebRTC.
+  friends join, pick a family each, and the host begins. Rooms live on Lilienstern's game
+  server (`crates/lilienstern-server`, at `wss://lilienstern.fantasymaps.org/ws`), so nobody's
+  browser has to stay open for the game to go on.
 
 The host also sets the **pace** when it creates the game: a day runs when everyone has ended
 it; or when everyone has, or after a time limit (30 seconds to 2 minutes), whichever comes
 first; or the game **runs**, a day every 5 to 30 seconds whatever the players do (sooner if
-everyone has ended it). The host's clock decides and can pause the game; everyone sees the
-countdown.
+everyone has ended it). The server's clock decides; the host can pause it, and everyone sees
+the countdown.
 
 Online play is **lockstep**. Every browser runs the same engine on the same files, parameters and
-seed; every change to the game is a command (a decision, an order, the end of a day), and the
-host puts the commands in one order and sends them to everyone. A day runs when every person has
-ended it (a player whose connection dropped does not hold it up, and the host can hand their
-family to the computer). After each day every browser compares a fingerprint of the whole game
-with the host's; a browser that differs, or comes back after a dropped connection, replays the
-commands from the start, which takes a moment even late in a game. Someone can also join a game
-under way and take over a family the computer was playing.
+seed; every change to the game is a command (a decision, an order, research, the end of a day),
+and the server puts the commands in one order, keeps them and sends them to everyone: the log of
+commands is the game. The server does not run the game itself, only the room: who plays what,
+the log, the clock. A day runs when every person has ended it; a player whose connection
+dropped does not hold it up, gets the commands they missed when they are back (the page
+reconnects by itself), and the host can hand their family to the computer. Someone who closed
+their tab can open the room again and take their family back ("Take over"; the host's seat
+makes them the host). Someone can also join a game under way and take over a family the
+computer was playing. After each day every browser sends the server a fingerprint of the whole
+game; if two differ, everyone replays the log.
 
 This works because the engine is deterministic and WebAssembly's arithmetic is the same in
-every browser. The host is the referee and the room lives in its tab: if the host leaves, the
-game stops.
+every browser. Rooms are saved on the server as they change, so games survive a restart; a
+room nobody touches for two weeks is deleted.
+
+**Running the server**: `cargo run --release -p lilienstern-server` (it listens on
+`LIL_ADDR`, default `0.0.0.0:8080`, keeps rooms in `LIL_DATA`, default `data`, and accepts pages
+from `LIL_ORIGINS`). A page uses another server with `?server=ws://localhost:8080/ws`.
+`deploy/server/` has a Dockerfile and a Docker Swarm stack behind Traefik, deployed by
+`tools/deploy-server.sh`. One server holds thousands of games: a room is a few kilobytes of
+commands, and the server does no simulation.
 
 ## Documentation
 

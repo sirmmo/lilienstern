@@ -1,86 +1,86 @@
-// Browser-to-browser play over WebRTC, as in OpenTactics. PeerJS (vendor/, MIT) only introduces
-// the browsers through its public server; after that, messages go straight from one to the other.
+// Online play through Lilienstern's game server (crates/lilienstern-server): one WebSocket to
+// it, which comes back by itself when the line drops.
 //
-// The host's browser is the referee: it puts every command (a decision, an order, the end of a
-// day) in one sequence and sends it to every guest. Every browser runs the same deterministic
-// engine on the same commands, and compares a fingerprint of the game with the host's after each
-// day; a guest that differs, or comes back after a dropped connection, replays the sequence.
+// The server does not run the game: every browser does, with the same engine on the same
+// files. The server puts every player's commands (a decision, an order, the end of a day) in
+// one order, keeps them, and sends them to everyone; the log of commands is the game. A browser
+// that falls behind, or comes back after a dropped connection, gets the commands it misses.
 
-/* global Peer */
 window.LilNet = (() => {
-  const LETTERS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  let script = null;
-
-  function newCode() {
-    return Array.from(crypto.getRandomValues(new Uint8Array(5)), (b) => LETTERS[b % LETTERS.length]).join('');
-  }
+  const SERVER = 'wss://lilienstern.fantasymaps.org/ws';
 
   function cleanCode(text) {
     return (text || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
   }
 
-  function loadPeerJs() {
-    if (window.Peer) return Promise.resolve();
-    return (script ||= new Promise((ok, fail) => {
-      const s = document.createElement('script');
-      s.src = 'vendor/peerjs.min.js';
-      s.onload = ok;
-      s.onerror = () => fail(new Error('Could not load PeerJS.'));
-      document.head.append(s);
-    }));
+  /** The server to use: `?server=` on the page's address (for tests), or the game's own. */
+  function serverUrl() {
+    return new URLSearchParams(location.search).get('server') || window.GAME?.server || SERVER;
   }
 
-  function openPeer(id) {
+  /**
+   * Opens a connection: resolves once it is open. `onMessage(msg)` gets every message;
+   * `onState('lost' | 'back')` hears when the line drops and when it is back (then the page
+   * says hello again: the server does not remember connections, only players).
+   */
+  function connect(onMessage, onState) {
+    const url = serverUrl();
+    let ws = null;
+    let tries = 0;
+    let closed = false;
+    const conn = {
+      /** Sends a message; false if the line is down (it will be back). */
+      send(msg) {
+        if (!ws || ws.readyState !== 1) return false;
+        ws.send(JSON.stringify(msg));
+        return true;
+      },
+      get open() { return !!ws && ws.readyState === 1; },
+      close() { closed = true; if (ws) ws.close(); },
+    };
     return new Promise((ok, fail) => {
-      const peer = id ? new Peer(id, { debug: 1 }) : new Peer({ debug: 1 });
-      const timer = setTimeout(() => fail(new Error('The introduction server did not answer.')), 15000);
-      peer.on('open', () => { clearTimeout(timer); ok(peer); });
-      peer.on('error', (e) => {
-        clearTimeout(timer);
-        fail(new Error(e.type === 'unavailable-id' ? 'That room code is taken.' : e.message || String(e)));
-      });
+      let first = true;
+      const open = () => {
+        ws = new WebSocket(url);
+        const timer = setTimeout(() => { if (ws.readyState === 0) ws.close(); }, 10000);
+        ws.onopen = () => {
+          clearTimeout(timer);
+          tries = 0;
+          if (first) { first = false; ok(conn); } else onState('back');
+        };
+        ws.onmessage = (e) => {
+          let msg;
+          try { msg = JSON.parse(e.data); } catch { return; }
+          onMessage(msg);
+        };
+        ws.onclose = () => {
+          clearTimeout(timer);
+          if (closed) return;
+          if (first) { first = false; fail(new Error('The game server did not answer: try again in a moment.')); return; }
+          if (tries === 0) onState('lost');
+          setTimeout(open, Math.min(10000, 500 * 2 ** tries++));
+        };
+      };
+      open();
     });
   }
 
-  /** Opens room `code` of game `prefix`; `onGuest(conn)` for every guest that connects. */
-  async function host(prefix, code, onGuest) {
-    await loadPeerJs();
-    const peer = await openPeer(prefix + code);
-    peer.on('connection', (conn) => conn.on('open', () => onGuest(conn)));
-    peer.on('disconnected', () => { if (!peer.destroyed) setTimeout(() => peer.reconnect(), 1500); });
-    return peer;
-  }
-
-  /** Joins room `code`: resolves with an open connection to the host. */
-  async function join(prefix, code) {
-    await loadPeerJs();
-    const peer = await openPeer();
-    // 'binary' splits big messages (a long game's commands) into chunks.
-    const conn = peer.connect(prefix + code, { reliable: true, serialization: 'binary' });
-    await new Promise((ok, fail) => {
-      const timer = setTimeout(() => fail(new Error('No room with that code answered.')), 15000);
-      conn.on('open', () => { clearTimeout(timer); ok(); });
-      peer.on('error', (e) => {
-        clearTimeout(timer);
-        fail(new Error(e.type === 'peer-unavailable' ? 'No room with that code is open.' : e.message || String(e)));
-      });
-    });
-    return { peer, conn };
-  }
-
-  /** Who this browser is, so a guest gets its family back after a dropped connection. */
+  /** Who this browser is, so a player gets their family back after a dropped connection. */
+  let mine = null;
   function token() {
+    if (mine) return mine;
     try {
       let t = sessionStorage.getItem('lilienstern.token');
       if (!t) {
         t = Array.from(crypto.getRandomValues(new Uint8Array(12)), (b) => b.toString(16).padStart(2, '0')).join('');
         sessionStorage.setItem('lilienstern.token', t);
       }
-      return t;
+      mine = t;
     } catch {
-      return Math.random().toString(36).slice(2);
+      mine = Array.from(crypto.getRandomValues(new Uint8Array(12)), (b) => b.toString(16).padStart(2, '0')).join('');
     }
+    return mine;
   }
 
-  return { newCode, cleanCode, host, join, token };
+  return { cleanCode, connect, token, serverUrl };
 })();

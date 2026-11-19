@@ -42,24 +42,23 @@ let lastPos = new Map(); // troop id -> [lon, lat] where it was drawn last
 let battleMarkers = [];
 
 // ---------- several players ----------
-// mode: 'solo' (one person), 'local' (several, taking turns on this device), 'host' or 'guest'
-// (online). `mine` are the factions played on this device, `player` the one shown now;
-// `humans` every faction a person plays. A day runs when every human has ended it (`ready`);
-// online, players whose connection dropped (`away`) do not hold the day up.
+// mode: 'solo' (one person), 'local' (several, taking turns on this device) or 'online' (through
+// the game server: net.js). `mine` are the factions played on this device, `player` the one
+// shown now; `humans` every faction a person plays. A day runs when every human has ended it
+// (`ready`); online, players whose connection dropped (`away`) do not hold the day up.
 let mode = 'solo';
 let mine = [];
 let humans = [];
 const ready = new Set();
 const away = new Set();
-let net = null; // host: { peer, code, guests: Map(conn -> token), seats: Map(faction -> token|'host') }; guest: { peer, conn, faction }
-let settings = null; // { params, seed, players }: what every browser starts the game from
-let log = []; // every command since the start, in order: what a guest replays to catch up
+let net = null; // online: { conn, code, token, owner (opened the room) }
+let settings = null; // { params, seed, players, pace }: what every browser starts the game from
+let log = []; // every command since the start, in order (online: the server's log)
 let started = false;
-const PREFIX = () => `lilienstern-${CONFIG.id}-v1-`;
 
 // The pace of an online game, set by the host when it creates the game: 'wait' (a day runs when
 // everyone has ended it), 'limit-N' (... or after N seconds at most) or 'run-N' (a day every N
-// seconds, sooner if everyone has ended it). The host's clock decides; guests show a countdown.
+// seconds, sooner if everyone has ended it). The server's clock decides; pages count down.
 const PACES = [
   ['wait', 'When everyone has ended the day'],
   ['limit-30', 'Everyone, or 30 seconds at most'],
@@ -72,7 +71,7 @@ const PACES = [
 ];
 const paceName = (p) => (PACES.find(([v]) => v === p) || PACES[0])[1];
 const paceSeconds = (p) => +((p || 'wait').split('-')[1] || 0);
-let deadline = null; // when the host's clock runs the day (performance.now() time), or null
+let deadline = null; // when the server's clock runs the day (performance.now() time), or null
 let paused = false;
 let ticker = null;
 
@@ -237,7 +236,7 @@ async function launch(s, commands) {
       } catch { /* no labels: the game is the same */ }
     }
     log = [];
-    for (const c of commands) apply(c);
+    for (const c of commands) follow(c);
     humans = s.players.slice();
     for (const c of commands) {
       if (c.op === 'claim' && !humans.includes(c.faction)) humans.push(c.faction);
@@ -280,24 +279,39 @@ async function launch(s, commands) {
 }
 
 // ---------- commands ----------
-// Everything that changes the game is a command: a decision ('take'), an order ('order'), a
-// person taking over or leaving a faction ('claim', 'release'), the end of a day ('step').
-// Commands run in one order in every browser: the host's.
+// Everything that changes the game is a command: a decision ('take'), an order ('order'),
+// research, a person taking over or leaving a faction ('claim', 'release'), the end of a day
+// ('step'). Online, commands run in one order in every browser: the server's.
 
-/** Runs a command on this browser's engine and records it. Throws if the engine refuses it. */
+/** Runs a command on this browser's engine. Throws if the engine refuses it. */
+function exec(c) {
+  if (c.op === 'step') call({ op: 'step', days: 1 });
+  else call(c);
+}
+
+/** Alone or on one device: runs a command and records it, if the engine takes it. */
 function apply(c) {
-  if (c.op === 'step') {
-    call({ op: 'step', days: 1 });
-  } else {
-    call(c);
-  }
+  exec(c);
   log.push(c);
 }
 
-/** This device wants a command done: alone or hosting, now; as a guest, by the host. */
+/** Online: a command of the server's log. It is part of the game whether or not the engine
+ * takes it (every browser refuses the same ones, and a refused command changes nothing), so it
+ * is always recorded. Returns the refusal, if any. */
+function follow(c) {
+  log.push(c);
+  try {
+    exec(c);
+    return null;
+  } catch (e) {
+    return e;
+  }
+}
+
+/** This device wants a command done: alone, now; online, through the server. */
 function act(c) {
-  if (mode === 'guest') {
-    send({ t: 'req', cmd: c });
+  if (mode === 'online') {
+    if (!send({ t: 'req', cmd: c })) { news('Not connected to the server: wait a moment.', 'bad'); return false; }
     return true;
   }
   try {
@@ -306,7 +320,6 @@ function act(c) {
     news(e.message, 'bad');
     return false;
   }
-  if (mode === 'host') broadcast({ t: 'cmd', seq: log.length, cmd: c });
   afterCommand(c);
   return true;
 }
@@ -324,14 +337,9 @@ function endDay() {
   if (busy || st.over) return;
   if (mode === 'solo') { advance(); return; }
   ready.add(player);
-  if (mode === 'guest') {
-    send({ t: 'ready', faction: player });
+  if (mode === 'online') {
+    send({ t: 'ready' });
     hud();
-    return;
-  }
-  if (mode === 'host') {
-    broadcast({ t: 'ready', ready: [...ready] });
-    hostDay();
     return;
   }
   // On this device: the next person, or the day.
@@ -344,7 +352,7 @@ function endDay() {
   if (mine.length > 1) turn();
 }
 
-/** Runs one day here (as the host, or alone): every human is done. */
+/** Runs one day here (alone, or on one device): every human is done. */
 function advance() {
   busy = true;
   const before = st;
@@ -352,50 +360,22 @@ function advance() {
   st = call({ op: 'state', faction: player, map: viewIndex() });
   busy = false;
   ready.clear();
-  if (mode === 'host') {
-    broadcast({ t: 'step', seq: log.length, fingerprint: st.fingerprint });
-    startClock();
-  }
   report(before, st);
   refresh(true);
   if (st.over || (mode === 'solo' && (!st.alive[player] || st.territory[player] === st.owner.length))) gameOver();
 }
 
-// ---------- the clock (online, set by the host) ----------
-
-/** As the host: a new day, a new deadline (none when the game waits for everyone). */
-function startClock() {
-  const secs = paceSeconds(settings?.pace);
-  deadline = secs && !st.over ? performance.now() + secs * 1000 : null;
-  sendClock();
-  tick();
-}
-
-/** Tells guests (or one guest) how long the day has left; they count down on their own clock. */
-function sendClock(conn) {
-  const msg = { t: 'clock', ms: deadline === null ? null : Math.max(0, deadline - performance.now()), paused };
-  if (conn) conn.send(msg); else broadcast(msg);
-}
+// ---------- the clock (online, kept by the server) ----------
 
 /** The host pauses or resumes the clock for everyone. */
 function togglePause() {
-  if (mode !== 'host' || deadline === null) return;
-  if (paused) {
-    deadline = performance.now() + net.left;
-    paused = false;
-  } else {
-    net.left = Math.max(0, deadline - performance.now());
-    paused = true;
-  }
-  sendClock();
-  hud();
+  if (mode === 'online' && net?.owner) send({ t: 'pause' });
 }
 
-/** Every quarter of a second: the countdown, and (as the host) the day when time is up. */
+/** Every quarter of a second: the countdown to the server's next day. */
 function tick() {
   if (!ticker) {
-    // A worker's timer keeps going in a background tab, where the page's own are slowed down
-    // (to once a minute after a while): the host's days must not stall when it looks elsewhere.
+    // A worker's timer keeps going in a background tab, where the page's own are slowed down.
     try {
       ticker = new Worker(URL.createObjectURL(new Blob(['setInterval(() => postMessage(0), 250)'], { type: 'text/javascript' })));
       ticker.onmessage = tick;
@@ -404,23 +384,13 @@ function tick() {
     }
   }
   const el = $('clock');
+  if (!el) return;
   if (!started || deadline === null || st?.over) {
-    if (el) el.textContent = '';
+    el.textContent = paused && started ? ' · paused' : '';
     return;
   }
-  const left = paused ? net?.left ?? 0 : Math.max(0, deadline - performance.now());
-  if (el) el.textContent = paused ? ' · paused' : ` · ${Math.ceil(left / 1000)} s`;
-  if (mode === 'host' && !paused && left <= 0 && !busy) {
-    deadline = null;
-    advance();
-  }
-}
-
-/** As the host: the day runs once every person still in the game has ended it. */
-function hostDay() {
-  const waiting = humans.filter((f) => !ready.has(f) && !away.has(f) && st.alive[f]);
-  hud();
-  if (!waiting.length) advance();
+  const left = Math.max(0, deadline - performance.now());
+  el.textContent = ` · ${Math.ceil(left / 1000)} s`;
 }
 
 /** On a shared device: whose turn it is. */
@@ -449,144 +419,51 @@ function frameOn(f) {
 }
 
 // ---------- online ----------
+// Through the game server (net.js): it orders everyone's commands and keeps them; this browser
+// runs the game on them, like every other.
+
+/** The families the start screen's settings let play (for the room's seats). */
+function lobbyFamilies() {
+  return realms.slice(0, CONFIG.count ? +CONFIG.params()[CONFIG.count] : realms.length).map((r) => ({ i: r.i, name: r.name, color: r.color }));
+}
+
+let inbox = Promise.resolve();
+
+/** Connects to the server; messages are handled one at a time, in the order they came. */
+async function connectServer() {
+  return LilNet.connect((msg) => { inbox = inbox.then(() => serverMessage(msg)).catch((e) => console.error(e)); }, (s) => {
+    if (s === 'lost') {
+      if (started) news('Lost the connection to the server: trying again…', 'bad');
+    } else {
+      if (started) news('Connected again.', 'good');
+      hello();
+    }
+  });
+}
 
 function send(msg) {
-  if (net?.conn?.open) net.conn.send(msg);
+  return !!net?.conn && net.conn.send(msg);
 }
 
-function broadcast(msg) {
-  if (!net?.guests) return;
-  for (const conn of net.guests.keys()) if (conn.open) conn.send(msg);
-}
-
-function lobbyState() {
-  const taken = [...net.seats.entries()].map(([f, who]) => [f, who === 'host' ? 'host' : 'guest']);
-  return { t: 'lobby', code: net.code, params: settings?.params || net.params, seed: net.seed, version: net.version, taken, started, pace: settings?.pace || net.pace,
-    families: realms.slice(0, CONFIG.count ? +net.params[CONFIG.count] : realms.length).map((r) => ({ i: r.i, name: r.name, color: r.color })) };
+/** Into the room (again): the server sends the lobby, or the game from the commands we lack. */
+function hello() {
+  send({ t: 'hello', game: CONFIG.id, code: net.code, token: net.token, have: started ? log.length : 0 });
 }
 
 async function openRoom(params, seed) {
   $('bStart').disabled = true;
   $('bStart').textContent = 'Opening the room…';
   try {
-    const code = LilNet.newCode();
     const fs = await files(params);
-    net = { code, params, seed, version: version(fs), guests: new Map(), seats: new Map([[player, 'host']]), pace: 'wait' };
-    net.peer = await LilNet.host(PREFIX(), code, onGuest);
-    mode = 'host';
+    net = { token: LilNet.token(), code: null, owner: true };
+    net.conn = await connectServer();
+    mode = 'online';
     mine = [player];
-    showLobby();
+    send({ t: 'create', game: CONFIG.id, token: net.token, params, seed, version: version(fs), families: lobbyFamilies(), seat: player, pace: 'wait' });
   } catch (e) {
     $('startError').textContent = e.message;
     $('bStart').disabled = false;
     $('bStart').textContent = 'Open the room';
-  }
-}
-
-function onGuest(conn) {
-  net.guests.set(conn, null);
-  conn.on('data', (msg) => hostMessage(conn, msg));
-  conn.on('close', () => {
-    const token = net.guests.get(conn);
-    net.guests.delete(conn);
-    const seat = [...net.seats.entries()].find(([, who]) => who === token);
-    if (!seat) return;
-    if (started) {
-      away.add(seat[0]);
-      news(`${info.factions[seat[0]].name} has lost the connection; the days go on without waiting.`, 'bad');
-      hostDay();
-    } else {
-      net.seats.delete(seat[0]);
-      showLobby();
-      broadcast(lobbyState());
-    }
-  });
-}
-
-/** The room as the host sees it before the game begins: the code and who plays what. */
-function showLobby() {
-  const box = $('lobby');
-  box.hidden = false;
-  const link = `${location.origin}${location.pathname}?join=${net.code}`;
-  const fams = lobbyState().families;
-  box.innerHTML = `<div class="code">Room <b>${net.code}</b></div>
-    <div class="muted small">Friends open <a href="${link}" target="_blank">${link}</a>, or choose "join a room" and type the code.</div>
-    <div class="seats">${fams.map((f) => `<div>${chipFor(f)}${f.name}<span class="n">${net.seats.get(f.i) === 'host' ? 'you' : net.seats.has(f.i) ? 'a friend' : 'the computer'}</span></div>`).join('')}</div>
-    <div class="pace">Pace <select id="pace">${PACES.map(([v, t]) => `<option value="${v}"${v === net.pace ? ' selected' : ''}>${t}</option>`).join('')}</select></div>
-    <button id="bBegin" class="primary big">Begin</button>`;
-  $('bBegin').onclick = beginRoom;
-  $('pace').onchange = (e) => { net.pace = e.target.value; broadcast(lobbyState()); };
-  $('bStart').hidden = true;
-}
-
-async function beginRoom() {
-  const players = [...net.seats.keys()].sort((a, b) => a - b);
-  const s = { params: net.params, seed: net.seed, players, pace: net.pace };
-  mode = 'host';
-  await launch(s, []);
-  for (const [conn, token] of net.guests) {
-    if (token) conn.send({ t: 'start', settings: s, commands: [], faction: seatOf(token) });
-  }
-  startClock();
-  $('bStart').hidden = false;
-}
-
-const seatOf = (token) => [...net.seats.entries()].find(([, who]) => who === token)?.[0];
-
-function hostMessage(conn, msg) {
-  if (msg.t === 'hello') {
-    net.guests.set(conn, msg.token);
-    const f = seatOf(msg.token);
-    if (started && f !== undefined) {
-      // Back after a dropped connection: the whole game so far, and the same family.
-      away.delete(f);
-      conn.send({ t: 'start', settings, commands: log, faction: f });
-      news(`${info.factions[f].name} is back.`, 'good');
-      sendClock(conn);
-      hud();
-      return;
-    }
-    conn.send(lobbyState());
-    return;
-  }
-  const token = net.guests.get(conn);
-  if (msg.t === 'pick') {
-    const free = !net.seats.has(msg.faction) && lobbyState().families.some((f) => f.i === msg.faction);
-    if (!free || seatOf(token) !== undefined) { conn.send({ t: 'err', msg: 'That family is taken.' }); return; }
-    if (!started) {
-      net.seats.set(msg.faction, token);
-      showLobby();
-      broadcast(lobbyState());
-      return;
-    }
-    // Joining a game under way: a person takes over a family the computer played.
-    if (!act({ op: 'claim', faction: msg.faction })) return;
-    net.seats.set(msg.faction, token);
-    conn.send({ t: 'start', settings, commands: log, faction: msg.faction });
-    sendClock(conn);
-    news(`A friend now plays ${info.factions[msg.faction].name}.`, 'good');
-    return;
-  }
-  const f = seatOf(token);
-  if (f === undefined) return;
-  if (msg.t === 'req') {
-    // A guest acts only for its own family.
-    const c = { ...msg.cmd, faction: f };
-    if (!['take', 'order', 'research'].includes(c.op)) return;
-    try {
-      apply(c);
-    } catch (e) {
-      conn.send({ t: 'err', msg: e.message });
-      return;
-    }
-    broadcast({ t: 'cmd', seq: log.length, cmd: c });
-    afterCommand(c);
-  } else if (msg.t === 'ready') {
-    ready.add(f);
-    broadcast({ t: 'ready', ready: [...ready] });
-    hostDay();
-  } else if (msg.t === 'resync') {
-    conn.send({ t: 'start', settings, commands: log, faction: f });
   }
 }
 
@@ -596,12 +473,10 @@ async function joinRoom() {
   $('bStart').disabled = true;
   $('bStart').textContent = 'Joining…';
   try {
-    const { peer, conn } = await LilNet.join(PREFIX(), code);
-    net = { peer, conn, code };
-    mode = 'guest';
-    conn.on('data', guestMessage);
-    conn.on('close', () => news('The host has left: the game cannot go on.', 'bad'));
-    conn.send({ t: 'hello', token: LilNet.token() });
+    net = { token: LilNet.token(), code, owner: false };
+    net.conn = await connectServer();
+    mode = 'online';
+    hello();
   } catch (e) {
     $('startError').textContent = e.message;
   } finally {
@@ -610,63 +485,114 @@ async function joinRoom() {
   }
 }
 
-async function guestMessage(msg) {
+/** The room before the game (or for someone without a family once it is under way). */
+function showLobby(msg) {
+  const box = $('lobby');
+  box.hidden = false;
+  const link = `${location.origin}${location.pathname}?join=${msg.code}`;
+  const taken = new Map(msg.taken.map(([f, who, gone]) => [f, { who, gone }]));
+  const seated = msg.taken.some(([, who]) => who === 'you');
+  const seat = (f) => {
+    const t = taken.get(f.i);
+    if (t) {
+      const who = t.who === 'you' ? 'you' : t.who === 'host' ? 'the host' : 'a friend';
+      // Someone who left (a closed tab, another device) can take their family back from here.
+      return t.gone && !seated ? `${who} (away) <button data-f="${f.i}">Take over</button>` : who + (t.gone ? ' (away)' : '');
+    }
+    return seated ? 'the computer' : `<button data-f="${f.i}">Play</button>`;
+  };
+  const head = `<div class="code">Room <b>${msg.code}</b>${msg.started ? ' <span class="muted">(the game is under way)</span>' : ''}</div>`;
+  const how = msg.owner
+    ? `<div class="muted small">Friends open <a href="${link}" target="_blank">${link}</a>, or choose "join a room" and type the code.</div>`
+    : `<div class="muted small">${seated ? 'The host begins the game.' : `Choose your family${msg.started ? ' (you take it over from the computer)' : ''}.`}</div>`;
+  const pace = msg.owner && !msg.started
+    ? `<div class="pace">Pace <select id="pace">${PACES.map(([v, t]) => `<option value="${v}"${v === msg.pace ? ' selected' : ''}>${t}</option>`).join('')}</select></div>`
+    : `<div class="pace">Pace: <b>${paceName(msg.pace)}</b></div>`;
+  box.innerHTML = `${head}${how}<div class="seats">${msg.families.map((f) => `<div>${chipFor(f)}${f.name}<span class="n">${seat(f)}</span></div>`).join('')}</div>${pace}`
+    + (msg.owner && !msg.started ? '<button id="bBegin" class="primary big">Begin</button>' : '');
+  if ($('bBegin')) $('bBegin').onclick = () => { $('bBegin').disabled = true; send({ t: 'begin' }); };
+  if ($('pace')) $('pace').onchange = (e) => send({ t: 'pace', pace: e.target.value });
+  box.querySelectorAll('button[data-f]').forEach((b) => {
+    b.onclick = () => { send({ t: 'pick', faction: +b.dataset.f }); box.querySelectorAll('button[data-f]').forEach((x) => { x.disabled = true; }); };
+  });
+  $('bStart').hidden = true;
+}
+
+/** Commands missed while the line was down: run them, as they came. */
+function catchUp(commands) {
+  const before = st;
+  for (const c of commands) follow(c);
+  for (const c of commands) {
+    if (c.op === 'claim' && !humans.includes(c.faction)) humans.push(c.faction);
+    if (c.op === 'release') humans = humans.filter((f) => f !== c.faction);
+  }
+  st = call({ op: 'state', faction: player, map: viewIndex() });
+  report(before, st);
+  refresh(true);
+  if (st.over) gameOver();
+}
+
+async function serverMessage(msg) {
   if (msg.t === 'lobby') {
-    const fs = await files(msg.params);
-    if (version(fs) !== msg.version) {
-      $('startError').textContent = 'The host plays another version of this game: reload both pages.';
+    net.code = msg.code;
+    net.owner = msg.owner;
+    if (started) return;
+    if (!msg.owner) {
+      const fs = await files(msg.params);
+      if (version(fs) !== msg.version) {
+        $('startError').textContent = 'This room plays another version of the game: reload the page (both of you).';
+        return;
+      }
+    }
+    showLobby(msg);
+  } else if (msg.t === 'start') {
+    net.code = msg.code;
+    net.owner = msg.owner;
+    if (started && msg.from > 0 && msg.from === log.length) {
+      catchUp(msg.commands);
       return;
     }
-    const box = $('lobby');
-    box.hidden = false;
-    const taken = new Map(msg.taken);
-    box.innerHTML = `<div class="code">Room <b>${msg.code}</b>${msg.started ? ' <span class="muted">(the game is under way)</span>' : ''}</div>
-      <div class="muted small">Choose your family${msg.started ? ' (you take it over from the computer)' : ''}; the host begins the game.</div>
-      <div class="pace">Pace: <b>${paceName(msg.pace)}</b></div>
-      <div class="seats">${msg.families.map((f) => `<div>${chipFor(f)}${f.name}<span class="n">${taken.has(f.i) ? (taken.get(f.i) === 'host' ? 'the host' : 'a friend') : `<button data-f="${f.i}">Play</button>`}</span></div>`).join('')}</div>`;
-    box.querySelectorAll('button[data-f]').forEach((b) => { b.onclick = () => { send({ t: 'pick', faction: +b.dataset.f }); box.querySelectorAll('button[data-f]').forEach((x) => { x.disabled = true; }); }; });
-    $('bStart').hidden = true;
-  } else if (msg.t === 'start') {
     mine = [msg.faction];
-    mode = 'guest';
     await launch(msg.settings, msg.commands);
+    $('lobby').hidden = true;
     $('bStart').hidden = false;
   } else if (msg.t === 'cmd') {
     if (!started) return;
     if (msg.seq !== log.length + 1) { send({ t: 'resync' }); return; }
-    try {
-      apply(msg.cmd);
-    } catch {
-      send({ t: 'resync' });
-      return;
-    }
+    const refused = follow(msg.cmd);
+    if (refused && mine.includes(msg.cmd.faction)) news(refused.message, 'bad');
     afterCommand(msg.cmd);
   } else if (msg.t === 'step') {
     if (!started) return;
     if (msg.seq !== log.length + 1) { send({ t: 'resync' }); return; }
     const before = st;
-    apply({ op: 'step' });
+    busy = true;
+    follow({ op: 'step' });
     st = call({ op: 'state', faction: player, map: viewIndex() });
+    busy = false;
     ready.clear();
-    if (st.fingerprint !== msg.fingerprint) {
-      news('Out of step with the host: catching up.', 'bad');
-      send({ t: 'resync' });
-      return;
-    }
+    send({ t: 'fp', seq: log.length, fp: st.fingerprint });
     report(before, st);
     refresh(true);
-    if (st.over) gameOver();
-  } else if (msg.t === 'ready') {
+    if (st.over) { send({ t: 'over' }); gameOver(); } else if (!st.alive[player]) send({ t: 'ready' }); // the fallen do not hold the day up
+  } else if (msg.t === 'away') {
+    away.clear();
+    msg.away.forEach((f) => away.add(f));
     ready.clear();
     msg.ready.forEach((f) => ready.add(f));
-    hud();
+    if (started) hud();
   } else if (msg.t === 'clock') {
     paused = msg.paused;
     deadline = msg.ms === null ? null : performance.now() + msg.ms;
     tick();
+    if (started) players();
+  } else if (msg.t === 'note') {
+    if (started) news(msg.msg, msg.kind);
   } else if (msg.t === 'err') {
-    news(msg.msg, 'bad');
+    if (started) news(msg.msg, 'bad'); else $('startError').textContent = msg.msg;
     $('lobby').querySelectorAll('button[data-f]').forEach((x) => { x.disabled = false; });
+    if ($('bBegin')) $('bBegin').disabled = false;
+    if (!net?.code) { $('bStart').disabled = false; $('bStart').textContent = radio('mode') === 'join' ? 'Join' : 'Open the room'; }
   }
 }
 
@@ -1199,12 +1125,12 @@ function players() {
   const rows = humans.map((f) => {
     const fac = info.factions[f];
     const state = !st.alive[f] ? 'fallen' : away.has(f) ? 'away' : ready.has(f) ? 'done' : 'thinking…';
-    const who = mine.includes(f) ? (mode === 'local' ? 'here' : 'you') : mode === 'host' ? 'friend' : '';
-    const ai = mode === 'host' && away.has(f) ? ` <button data-ai="${f}">to the computer</button>` : '';
+    const who = mine.includes(f) ? (mode === 'local' ? 'here' : 'you') : mode === 'online' ? 'friend' : '';
+    const ai = mode === 'online' && net?.owner && away.has(f) ? ` <button data-ai="${f}">to the computer</button>` : '';
     return `<div class="${f === player ? 'me' : ''}">${chipFor(fac)}${fac.name} <span class="muted">${who}</span><span class="n">${state}${ai}</span></div>`;
   }).join('');
   const room = net?.code ? `<span class="muted">· room ${net.code}</span>` : '';
-  const pace = settings?.pace && settings.pace !== 'wait' ? `<div class="muted small">${paceName(settings.pace)}${mode === 'host' ? ` <button id="bPause">${paused ? 'Resume' : 'Pause'}</button>` : ''}</div>` : '';
+  const pace = settings?.pace && settings.pace !== 'wait' ? `<div class="muted small">${paceName(settings.pace)}${mode === 'online' && net?.owner ? ` <button id="bPause">${paused ? 'Resume' : 'Pause'}</button>` : paused ? ' · paused' : ''}</div>` : '';
   box.innerHTML = `<span class="lbl">Players ${room}</span>${rows}${pace}`;
   if ($('bPause')) $('bPause').onclick = togglePause;
   if (!$('clock')) {
@@ -1214,13 +1140,7 @@ function players() {
     $('days').parentElement.after(c);
   }
   box.querySelectorAll('button[data-ai]').forEach((b) => {
-    b.onclick = () => {
-      const f = +b.dataset.ai;
-      if (!act({ op: 'release', faction: f })) return;
-      net.seats.delete(f);
-      away.delete(f);
-      hostDay();
-    };
+    b.onclick = () => send({ t: 'release', faction: +b.dataset.ai });
   });
   $('bDay').textContent = mode === 'solo' ? 'End day' : ready.has(player) ? 'Waiting…' : 'End day';
   $('bDay').disabled = mode !== 'solo' && mode !== 'local' && ready.has(player);
@@ -1348,7 +1268,7 @@ const viewIndex = () => (VIEWS[view] ? info.maps.indexOf(view) : null);
 function take(o, place) {
   const before = st.troops.length;
   if (!act({ op: 'take', faction: player, decision: o.decision, place })) return;
-  if (o.raise && mode !== 'guest' && st.troops.length > before) news(`${o.raise} raised in ${placeName(place)}.`, 'good');
+  if (o.raise && mode !== 'online' && st.troops.length > before) news(`${o.raise} raised in ${placeName(place)}.`, 'good');
 }
 
 /** Alone: several days at once. */
@@ -1437,7 +1357,7 @@ $('bFold').onclick = () => { $('hud').classList.toggle('open'); $('bFold').textC
 $('bHelpClose').onclick = () => { $('help').hidden = true; };
 $('bAgain').onclick = () => {
   // Online, a new game is a new room: start from a clean page.
-  if (mode === 'host' || mode === 'guest') { location.href = location.pathname; return; }
+  if (mode === 'online') { location.href = location.pathname + location.search.replace(/[?&]join=[^&]*/, ''); return; }
   started = false; $('over').hidden = true; $('hud').hidden = true; $('card').hidden = true; $('start').hidden = false; $('seed').value = 1 + Math.floor(Math.random() * 9999); };
 document.addEventListener('keydown', (e) => {
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
@@ -1449,6 +1369,6 @@ document.addEventListener('keydown', (e) => {
 
 // For tests and the curious.
 window.__marches = { call, get state() { return st; }, get info() { return info; }, get map() { return map; }, get mode() { return mode; },
-  get player() { return player; }, get log() { return log; }, get ready() { return [...ready]; }, choose, clickPlace, endDay, step: endDay };
+  get player() { return player; }, get log() { return log; }, get ready() { return [...ready]; }, get net() { return net; }, choose, clickPlace, endDay, step: endDay };
 
 boot();

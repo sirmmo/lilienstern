@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/glassbox", "crates/lilienstern", "crates/lilienstern-cli", "crates/lilienstern-web"]
+members = ["crates/glassbox", "crates/lilienstern", "crates/lilienstern-cli", "crates/lilienstern-web", "crates/lilienstern-server"]
 
 [workspace.package]
 version = "0.1.0"

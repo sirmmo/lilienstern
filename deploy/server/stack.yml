@@ -1,0 +1,35 @@
+# The game server as a Docker Swarm stack behind Traefik (tools/deploy-server.sh deploys it).
+# Rooms are kept in the `data` volume, so games survive a redeploy.
+version: "3.8"
+
+services:
+  server:
+    image: ${LIL_IMAGE:-lilienstern-server:latest}
+    environment:
+      LIL_DATA: /data
+      LIL_ORIGINS: https://ingmmo.com,http://localhost,http://127.0.0.1
+    volumes:
+      - data:/data
+    networks:
+      - traefik-public
+    deploy:
+      replicas: 1          # one process holds every room: do not scale it out
+      restart_policy:
+        condition: any
+      resources:
+        limits:
+          memory: 1G
+      labels:
+        - traefik.enable=true
+        - traefik.docker.network=traefik-public
+        - traefik.http.routers.lilienstern.rule=Host(`lilienstern.fantasymaps.org`)
+        - traefik.http.routers.lilienstern.entrypoints=websecure
+        - traefik.http.routers.lilienstern.tls.certresolver=basic
+        - traefik.http.services.lilienstern.loadbalancer.server.port=8080
+
+networks:
+  traefik-public:
+    external: true
+
+volumes:
+  data:
