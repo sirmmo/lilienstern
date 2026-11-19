@@ -116,6 +116,12 @@ Marches and Italia take several people on the same map:
   [PeerJS](https://peerjs.com) (MIT, vendored in `web/marches/vendor`) only introduces the
   browsers, then they talk directly over WebRTC.
 
+The host also sets the **pace** when it creates the game: a day runs when everyone has ended
+it; or when everyone has, or after a time limit (30 seconds to 2 minutes), whichever comes
+first; or the game **runs**, a day every 5 to 30 seconds whatever the players do (sooner if
+everyone has ended it). The host's clock decides and can pause the game; everyone sees the
+countdown.
+
 Online play is **lockstep**. Every browser runs the same engine on the same files, parameters and
 seed; every change to the game is a command (a decision, an order, the end of a day), and the
 host puts the commands in one order and sends them to everyone. A day runs when every person has

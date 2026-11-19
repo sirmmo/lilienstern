@@ -53,6 +53,25 @@ let log = []; // every command since the start, in order: what a guest replays t
 let started = false;
 const PREFIX = () => `lilienstern-${CONFIG.id}-v1-`;
 
+// The pace of an online game, set by the host when it creates the game: 'wait' (a day runs when
+// everyone has ended it), 'limit-N' (... or after N seconds at most) or 'run-N' (a day every N
+// seconds, sooner if everyone has ended it). The host's clock decides; guests show a countdown.
+const PACES = [
+  ['wait', 'When everyone has ended the day'],
+  ['limit-30', 'Everyone, or 30 seconds at most'],
+  ['limit-60', 'Everyone, or 1 minute at most'],
+  ['limit-120', 'Everyone, or 2 minutes at most'],
+  ['run-5', 'Run: a day every 5 seconds'],
+  ['run-10', 'Run: a day every 10 seconds'],
+  ['run-20', 'Run: a day every 20 seconds'],
+  ['run-30', 'Run: a day every 30 seconds'],
+];
+const paceName = (p) => (PACES.find(([v]) => v === p) || PACES[0])[1];
+const paceSeconds = (p) => +((p || 'wait').split('-')[1] || 0);
+let deadline = null; // when the host's clock runs the day (performance.now() time), or null
+let paused = false;
+let ticker = null;
+
 // ---------- the engine ----------
 
 async function loadEngine() {
@@ -323,10 +342,68 @@ function advance() {
   st = call({ op: 'state', faction: player, map: viewIndex() });
   busy = false;
   ready.clear();
-  if (mode === 'host') broadcast({ t: 'step', seq: log.length, fingerprint: st.fingerprint });
+  if (mode === 'host') {
+    broadcast({ t: 'step', seq: log.length, fingerprint: st.fingerprint });
+    startClock();
+  }
   report(before, st);
   refresh(true);
   if (st.over || (mode === 'solo' && (!st.alive[player] || st.territory[player] === st.owner.length))) gameOver();
+}
+
+// ---------- the clock (online, set by the host) ----------
+
+/** As the host: a new day, a new deadline (none when the game waits for everyone). */
+function startClock() {
+  const secs = paceSeconds(settings?.pace);
+  deadline = secs && !st.over ? performance.now() + secs * 1000 : null;
+  sendClock();
+  tick();
+}
+
+/** Tells guests (or one guest) how long the day has left; they count down on their own clock. */
+function sendClock(conn) {
+  const msg = { t: 'clock', ms: deadline === null ? null : Math.max(0, deadline - performance.now()), paused };
+  if (conn) conn.send(msg); else broadcast(msg);
+}
+
+/** The host pauses or resumes the clock for everyone. */
+function togglePause() {
+  if (mode !== 'host' || deadline === null) return;
+  if (paused) {
+    deadline = performance.now() + net.left;
+    paused = false;
+  } else {
+    net.left = Math.max(0, deadline - performance.now());
+    paused = true;
+  }
+  sendClock();
+  hud();
+}
+
+/** Every quarter of a second: the countdown, and (as the host) the day when time is up. */
+function tick() {
+  if (!ticker) {
+    // A worker's timer keeps going in a background tab, where the page's own are slowed down
+    // (to once a minute after a while): the host's days must not stall when it looks elsewhere.
+    try {
+      ticker = new Worker(URL.createObjectURL(new Blob(['setInterval(() => postMessage(0), 250)'], { type: 'text/javascript' })));
+      ticker.onmessage = tick;
+    } catch {
+      ticker = setInterval(tick, 250);
+    }
+  }
+  const el = $('clock');
+  if (!started || deadline === null || st?.over) {
+    if (el) el.textContent = '';
+    return;
+  }
+  const left = paused ? net?.left ?? 0 : Math.max(0, deadline - performance.now());
+  if (el) el.textContent = paused ? ' · paused' : ` · ${Math.ceil(left / 1000)} s`;
+  if (mode === 'host' && !paused && left <= 0 && !busy) {
+    deadline = null;
+    advance();
+  }
 }
 
 /** As the host: the day runs once every person still in the game has ended it. */
@@ -374,7 +451,7 @@ function broadcast(msg) {
 
 function lobbyState() {
   const taken = [...net.seats.entries()].map(([f, who]) => [f, who === 'host' ? 'host' : 'guest']);
-  return { t: 'lobby', code: net.code, params: settings?.params || net.params, seed: net.seed, version: net.version, taken, started,
+  return { t: 'lobby', code: net.code, params: settings?.params || net.params, seed: net.seed, version: net.version, taken, started, pace: settings?.pace || net.pace,
     families: realms.slice(0, CONFIG.count ? +net.params[CONFIG.count] : realms.length).map((r) => ({ i: r.i, name: r.name, color: r.color })) };
 }
 
@@ -384,7 +461,7 @@ async function openRoom(params, seed) {
   try {
     const code = LilNet.newCode();
     const fs = await files(params);
-    net = { code, params, seed, version: version(fs), guests: new Map(), seats: new Map([[player, 'host']]) };
+    net = { code, params, seed, version: version(fs), guests: new Map(), seats: new Map([[player, 'host']]), pace: 'wait' };
     net.peer = await LilNet.host(PREFIX(), code, onGuest);
     mode = 'host';
     mine = [player];
@@ -425,19 +502,22 @@ function showLobby() {
   box.innerHTML = `<div class="code">Room <b>${net.code}</b></div>
     <div class="muted small">Friends open <a href="${link}" target="_blank">${link}</a>, or choose "join a room" and type the code.</div>
     <div class="seats">${fams.map((f) => `<div><i class="chip" style="background:${f.color}"></i>${f.name}<span class="n">${net.seats.get(f.i) === 'host' ? 'you' : net.seats.has(f.i) ? 'a friend' : 'the computer'}</span></div>`).join('')}</div>
+    <div class="pace">Pace <select id="pace">${PACES.map(([v, t]) => `<option value="${v}"${v === net.pace ? ' selected' : ''}>${t}</option>`).join('')}</select></div>
     <button id="bBegin" class="primary big">Begin</button>`;
   $('bBegin').onclick = beginRoom;
+  $('pace').onchange = (e) => { net.pace = e.target.value; broadcast(lobbyState()); };
   $('bStart').hidden = true;
 }
 
 async function beginRoom() {
   const players = [...net.seats.keys()].sort((a, b) => a - b);
-  const s = { params: net.params, seed: net.seed, players };
+  const s = { params: net.params, seed: net.seed, players, pace: net.pace };
   mode = 'host';
   await launch(s, []);
   for (const [conn, token] of net.guests) {
     if (token) conn.send({ t: 'start', settings: s, commands: [], faction: seatOf(token) });
   }
+  startClock();
   $('bStart').hidden = false;
 }
 
@@ -452,6 +532,7 @@ function hostMessage(conn, msg) {
       away.delete(f);
       conn.send({ t: 'start', settings, commands: log, faction: f });
       news(`${info.factions[f].name} is back.`, 'good');
+      sendClock(conn);
       hud();
       return;
     }
@@ -472,6 +553,7 @@ function hostMessage(conn, msg) {
     if (!act({ op: 'claim', faction: msg.faction })) return;
     net.seats.set(msg.faction, token);
     conn.send({ t: 'start', settings, commands: log, faction: msg.faction });
+    sendClock(conn);
     news(`A friend now plays ${info.factions[msg.faction].name}.`, 'good');
     return;
   }
@@ -530,6 +612,7 @@ async function guestMessage(msg) {
     const taken = new Map(msg.taken);
     box.innerHTML = `<div class="code">Room <b>${msg.code}</b>${msg.started ? ' <span class="muted">(the game is under way)</span>' : ''}</div>
       <div class="muted small">Choose your family${msg.started ? ' (you take it over from the computer)' : ''}; the host begins the game.</div>
+      <div class="pace">Pace: <b>${paceName(msg.pace)}</b></div>
       <div class="seats">${msg.families.map((f) => `<div><i class="chip" style="background:${f.color}"></i>${f.name}<span class="n">${taken.has(f.i) ? (taken.get(f.i) === 'host' ? 'the host' : 'a friend') : `<button data-f="${f.i}">Play</button>`}</span></div>`).join('')}</div>`;
     box.querySelectorAll('button[data-f]').forEach((b) => { b.onclick = () => { send({ t: 'pick', faction: +b.dataset.f }); box.querySelectorAll('button[data-f]').forEach((x) => { x.disabled = true; }); }; });
     $('bStart').hidden = true;
@@ -567,6 +650,10 @@ async function guestMessage(msg) {
     ready.clear();
     msg.ready.forEach((f) => ready.add(f));
     hud();
+  } else if (msg.t === 'clock') {
+    paused = msg.paused;
+    deadline = msg.ms === null ? null : performance.now() + msg.ms;
+    tick();
   } else if (msg.t === 'err') {
     news(msg.msg, 'bad');
     $('lobby').querySelectorAll('button[data-f]').forEach((x) => { x.disabled = false; });
@@ -909,7 +996,15 @@ function players() {
     return `<div class="${f === player ? 'me' : ''}"><i class="chip" style="background:${fac.color}"></i>${fac.name} <span class="muted">${who}</span><span class="n">${state}${ai}</span></div>`;
   }).join('');
   const room = net?.code ? `<span class="muted">· room ${net.code}</span>` : '';
-  box.innerHTML = `<span class="lbl">Players ${room}</span>${rows}`;
+  const pace = settings?.pace && settings.pace !== 'wait' ? `<div class="muted small">${paceName(settings.pace)}${mode === 'host' ? ` <button id="bPause">${paused ? 'Resume' : 'Pause'}</button>` : ''}</div>` : '';
+  box.innerHTML = `<span class="lbl">Players ${room}</span>${rows}${pace}`;
+  if ($('bPause')) $('bPause').onclick = togglePause;
+  if (!$('clock')) {
+    const c = document.createElement('span');
+    c.id = 'clock';
+    c.className = 'muted';
+    $('days').parentElement.after(c);
+  }
   box.querySelectorAll('button[data-ai]').forEach((b) => {
     b.onclick = () => {
       const f = +b.dataset.ai;

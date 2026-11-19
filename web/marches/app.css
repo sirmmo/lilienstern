@@ -100,6 +100,8 @@ h3 { margin: 12px 0 4px; font-size: 12px; text-transform: uppercase; letter-spac
 #players { margin: 6px 0; }
 #players .me { font-weight: 700; }
 #players button { padding: 0 6px; font-size: 11px; margin-left: 4px; }
+.lobby .pace, #players .small { margin: 6px 0; }
+#clock { font-size: 15px; font-weight: 400; font-variant-numeric: tabular-nums; }
 #joinCode { font: inherit; text-transform: uppercase; letter-spacing: .1em; width: 7em; }
 #turn h2 { display: flex; align-items: center; gap: 8px; }
 
