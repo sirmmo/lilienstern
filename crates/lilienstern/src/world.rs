@@ -180,10 +180,10 @@ pub struct World<'g> {
     pub series: Series,
     /// Snapshots for replaying the game, when kept (see [`World::keep_history`]).
     pub history: Option<Vec<Frame>>,
-    /// The faction a person plays: the AI leaves it alone, and [`World::take`] acts for it.
-    pub player: Option<usize>,
-    /// Decisions the player has taken today.
-    pub player_actions: u32,
+    /// The factions people play: the AI leaves them alone, and [`World::take`] acts for them.
+    pub players: Vec<usize>,
+    /// Decisions each faction has taken today (counted for players).
+    pub player_actions: Vec<u32>,
     /// While true, `chance` conditions hold without drawing (to list options).
     dry: bool,
     logs: Vec<f64>,
@@ -276,8 +276,8 @@ impl<'g> World<'g> {
             ever_hot: vec![false; n],
             series: Series::default(),
             history: None,
-            player: None,
-            player_actions: 0,
+            players: Vec::new(),
+            player_actions: vec![0; nf],
             dry: false,
             logs: vec![0.0; rules.metrics.len()],
             today: Sums::default(),
@@ -465,11 +465,49 @@ impl<'g> World<'g> {
 
         // 8. Metrics.
         self.day += 1;
-        self.player_actions = 0;
+        self.player_actions.iter_mut().for_each(|a| *a = 0);
         self.record();
     }
 
     // ---------- playing ----------
+
+    /// A fingerprint of the state of the game (day, holders, presence, maps, accounts, troops),
+    /// to check that two copies of a game run in step (FNV-1a over the exact bits).
+    pub fn fingerprint(&self) -> u64 {
+        let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+        let mut eat = |x: u64| {
+            for b in x.to_le_bytes() {
+                h ^= u64::from(b);
+                h = h.wrapping_mul(0x0100_0000_01b3);
+            }
+        };
+        eat(u64::from(self.day));
+        for o in &self.owner {
+            eat(o.map_or(u64::MAX, |f| f as u64));
+        }
+        for v in self
+            .presence
+            .iter()
+            .chain(&self.gb.maps)
+            .chain(&self.gb.accounts)
+        {
+            for x in v {
+                eat(x.to_bits());
+            }
+        }
+        for t in &self.troops {
+            eat(u64::from(t.id));
+            eat(t.place as u64);
+            eat(t.hp.to_bits());
+            eat(t.progress.to_bits());
+            eat(t.path.len() as u64);
+        }
+        for r in self.relation.iter().flatten() {
+            eat(*r as u64);
+        }
+        eat(self.rng.state());
+        h
+    }
 
     fn is_target(&self, f: usize, t: Target, p: usize) -> bool {
         let contest = self.game.control.contest;
@@ -538,11 +576,11 @@ impl<'g> World<'g> {
     }
 
     /// Takes a decision for faction `f`, as the AI would: it must be one of its
-    /// [`options`](World::options), affordable, and (for the player) within its actions today.
+    /// [`options`](World::options), affordable, and (for players) within its actions today.
     pub fn take(&mut self, f: usize, decision: usize, place: Option<usize>) -> Result<(), String> {
         let g = self.game;
         let d = g.script.decisions.get(decision).ok_or("no such decision")?;
-        if self.player == Some(f) && self.player_actions >= g.factions[f].actions {
+        if self.players.contains(&f) && self.player_actions[f] >= g.factions[f].actions {
             return Err(format!(
                 "no actions left today (you have {} a day)",
                 g.factions[f].actions
@@ -576,8 +614,8 @@ impl<'g> World<'g> {
             }
         }
         self.taken[decision] += 1;
-        if self.player == Some(f) {
-            self.player_actions += 1;
+        if self.players.contains(&f) {
+            self.player_actions[f] += 1;
         }
         self.update_owners(true);
         Ok(())
@@ -914,7 +952,7 @@ impl<'g> World<'g> {
         let g = self.game;
         let mut opts: Vec<Opt> = Vec::new();
         for f in 0..self.factions.len() {
-            if !self.factions[f].alive || self.player == Some(f) {
+            if !self.factions[f].alive || self.players.contains(&f) {
                 continue;
             }
             let def = &g.factions[f];

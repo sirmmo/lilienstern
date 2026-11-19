@@ -19,7 +19,9 @@ slowed by terrain, share places with allies, and fight enemies where they meet.
 Bologna's 2,606 census sections, in your browser. **[Play Marches](https://ingmmo.com/lilienstern/marches/)**:
 rule a realm, raise troops and march them to war, medieval or futuristic.
 **[Play Italia](https://ingmmo.com/lilienstern/italia/)**: lead a noble family (Savoia, Visconti,
-Medici, Este, Aragona...) across ISTAT's Italy of 1871, on real mountains and plains. Documentation:
+Medici, Este, Aragona...) across ISTAT's Italy of 1871, on real mountains and plains.
+Marches and Italia can be played by several people on one map: taking turns on one device, or
+online, browser to browser, with a room code. Documentation:
 **[ingmmo.com/lilienstern](https://ingmmo.com/lilienstern/)**.
 
 Named after Otto August Rühle von Lilienstern (1780–1847), Prussian officer, military writer
@@ -102,6 +104,30 @@ Marches' (`games/italia` includes them); `tools/italia.py` builds the maps
 ./target/release/lilienstern run games/italia --seed 1 --map out/italia
 ./target/release/lilienstern run games/italia --set map=province --set families=16
 ```
+
+## Playing together
+
+Marches and Italia take several people on the same map:
+
+* **On one device**: choose every family a person plays; each takes their turn (decisions and
+  orders), and the day runs when the last one ends it.
+* **Online**: one player opens a room and gets a five-letter code (or a `?join=CODE` link);
+  friends join, pick a family each, and the host begins. Nothing goes through a game server:
+  [PeerJS](https://peerjs.com) (MIT, vendored in `web/marches/vendor`) only introduces the
+  browsers, then they talk directly over WebRTC.
+
+Online play is **lockstep**. Every browser runs the same engine on the same files, parameters and
+seed; every change to the game is a command (a decision, an order, the end of a day), and the
+host puts the commands in one order and sends them to everyone. A day runs when every person has
+ended it (a player whose connection dropped does not hold it up, and the host can hand their
+family to the computer). After each day every browser compares a fingerprint of the whole game
+with the host's; a browser that differs, or comes back after a dropped connection, replays the
+commands from the start, which takes a moment even late in a game. Someone can also join a game
+under way and take over a family the computer was playing.
+
+This works because the engine is deterministic and WebAssembly's arithmetic is the same in
+every browser. The host is the referee and the room lives in its tab: if the host leaves, the
+game stops.
 
 ## Documentation
 

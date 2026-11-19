@@ -8,6 +8,11 @@ impl Rng {
         Rng(seed ^ 0x5DEE_CE66_D1CE_4E5B)
     }
 
+    /// Where the sequence is (for fingerprints of a game's state).
+    pub fn state(&self) -> u64 {
+        self.0
+    }
+
     pub fn next_u64(&mut self) -> u64 {
         self.0 = self.0.wrapping_add(0x9E37_79B9_7F4A_7C15);
         let mut z = self.0;

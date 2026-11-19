@@ -9,9 +9,12 @@
 //! const answer = JSON.parse(new TextDecoder().decode(new Uint8Array(wasm.memory.buffer, out, wasm.lil_out_len())));
 //! ```
 //!
-//! Requests (`op`): `new` (start a game from files in memory), `state`, `place`, `options`,
-//! `take`, `step`, `summary`, and for troops `route` (where a troop would go, and how long it
-//! takes) and `order` (send it). Answers carry `error` when something went wrong.
+//! Requests (`op`): `new` (start a game from files in memory, with the factions people play
+//! as `players`), `state`, `place`, `options`, `take`, `step`, `summary`, for troops `route`
+//! (where a troop would go, and how long it takes) and `order` (send it), `release` (a player's
+//! faction goes back to the AI) and `fingerprint` (of the whole state, to check that copies of
+//! a game played in several browsers run in step). Requests that act for a player say which with
+//! `faction` (default: the first player). Answers carry `error` when something went wrong.
 
 use std::cell::RefCell;
 use std::collections::BTreeMap;
@@ -77,22 +80,48 @@ pub fn handle(req: &Value) -> Result<Value, String> {
         let s = s.as_mut().ok_or("no game: send `new` first")?;
         let w = &mut s.world;
         match op {
-            "state" => Ok(state(w, req["map"].as_u64().map(|m| m as usize))),
+            "state" => {
+                let f = faction_arg(w, req).ok();
+                Ok(state(w, req["map"].as_u64().map(|m| m as usize), f))
+            }
+            "fingerprint" => {
+                Ok(json!({ "fingerprint": format!("{:016x}", w.fingerprint()), "day": w.day }))
+            }
+            "claim" => {
+                // A person takes over a faction the AI was playing.
+                let f = match &req["faction"] {
+                    Value::Number(n) => n.as_u64().map(|i| i as usize),
+                    Value::String(id) => w.game.factions.iter().position(|f| &f.id == id),
+                    _ => None,
+                }
+                .filter(|&f| f < w.game.factions.len())
+                .ok_or("which faction?")?;
+                if !w.players.contains(&f) {
+                    w.players.push(f);
+                }
+                Ok(json!({ "players": w.players }))
+            }
+            "release" => {
+                let f = faction_arg(w, req)?;
+                w.players.retain(|&p| p != f);
+                Ok(json!({ "players": w.players }))
+            }
             "place" => {
                 let p = place_arg(w, &req["place"])?.ok_or("which place?")?;
-                Ok(place(w, p))
+                let f = faction_arg(w, req).ok();
+                Ok(place(w, p, f))
             }
             "options" => {
-                let f = w.player.ok_or("nobody plays")?;
+                let f = faction_arg(w, req)?;
                 let p = place_arg(w, &req["place"])?;
                 Ok(offers(w, f, p))
             }
             "take" => {
-                let f = w.player.ok_or("nobody plays")?;
+                let f = faction_arg(w, req)?;
                 let d = req["decision"].as_u64().ok_or("which decision?")? as usize;
                 let p = place_arg(w, &req["place"])?;
                 w.take(f, d, p)?;
-                Ok(state(w, req["map"].as_u64().map(|m| m as usize)))
+                Ok(state(w, req["map"].as_u64().map(|m| m as usize), Some(f)))
             }
             "step" => {
                 let days = req["days"].as_u64().unwrap_or(1).min(3650) as u32;
@@ -102,11 +131,12 @@ pub fn handle(req: &Value) -> Result<Value, String> {
                     }
                     w.step();
                 }
-                Ok(state(w, req["map"].as_u64().map(|m| m as usize)))
+                let f = faction_arg(w, req).ok();
+                Ok(state(w, req["map"].as_u64().map(|m| m as usize), f))
             }
             "summary" => Ok(json!(w.summary())),
             "route" | "order" => {
-                let f = w.player.ok_or("nobody plays")?;
+                let f = faction_arg(w, req)?;
                 let id = req["troop"].as_u64().ok_or("which troop?")? as u32;
                 let to = place_arg(w, &req["to"])?.ok_or("where to?")?;
                 if !w.troop(id).is_some_and(|t| t.faction == f) {
@@ -122,6 +152,29 @@ pub fn handle(req: &Value) -> Result<Value, String> {
             _ => Err(format!("unknown op {op:?}")),
         }
     })
+}
+
+/// The player a request acts for: `faction` (an index or an id), or the first player.
+fn faction_arg(w: &World, req: &Value) -> Result<usize, String> {
+    let f = match &req["faction"] {
+        Value::Number(n) => n.as_u64().map(|i| i as usize),
+        Value::String(id) => w.game.factions.iter().position(|f| &f.id == id),
+        _ => {
+            return w
+                .players
+                .first()
+                .copied()
+                .ok_or_else(|| "nobody plays".to_string())
+        }
+    }
+    .ok_or("no such faction")?;
+    if !w.players.contains(&f) {
+        return Err(format!(
+            "{} is not played by a person",
+            w.game.factions.get(f).map_or("?", |d| d.name.as_str())
+        ));
+    }
+    Ok(f)
 }
 
 fn place_arg(w: &World, v: &Value) -> Result<Option<usize>, String> {
@@ -155,7 +208,7 @@ fn start(req: &Value) -> Result<Value, String> {
     let game: &'static Game = Box::leak(Box::new(game));
     let seed = req["seed"].as_u64().unwrap_or(1);
     let mut world = World::new(game, seed)?;
-    world.player = match &req["player"] {
+    let one = |v: &Value| match v {
         Value::Number(n) => n
             .as_u64()
             .map(|i| i as usize)
@@ -163,6 +216,11 @@ fn start(req: &Value) -> Result<Value, String> {
         Value::String(id) => game.factions.iter().position(|f| &f.id == id),
         _ => None,
     };
+    world.players = match &req["players"] {
+        Value::Array(a) => a.iter().filter_map(one).collect(),
+        _ => one(&req["player"]).into_iter().collect(),
+    };
+    world.players.dedup();
     let info = json!({
         "name": game.name,
         "days": game.days,
@@ -179,9 +237,10 @@ fn start(req: &Value) -> Result<Value, String> {
         "terrain": world.terrain.iter().map(|t| t.map_or(-1, |t| t as i64)).collect::<Vec<_>>(),
         "kmDistances": game.war.km,
         "maps": game.rules.maps.iter().map(|m| m.id.clone()).collect::<Vec<_>>(),
-        "player": world.player,
+        "player": world.players.first(),
+        "players": world.players,
         "credit": world.city.attribution,
-        "state": state(&world, None),
+        "state": state(&world, None, world.players.first().copied()),
     });
     SESSION.with(|s| *s.borrow_mut() = Some(Session { world }));
     Ok(info)
@@ -191,7 +250,8 @@ fn round1(v: f64) -> f64 {
     (v * 10.0).round() / 10.0
 }
 
-fn state(w: &World, map: Option<usize>) -> Value {
+/// The state of the game, seen by faction `me` (its rank, actions left and relations).
+fn state(w: &World, map: Option<usize>, me: Option<usize>) -> Value {
     let g = w.game;
     let accounts: Vec<Value> = w
         .factions
@@ -216,9 +276,11 @@ fn state(w: &World, map: Option<usize>) -> Value {
         "owner": w.owner.iter().map(|o| o.map_or(-1, |f| f as i64)).collect::<Vec<_>>(),
         "territory": w.factions.iter().map(|f| f.territory).collect::<Vec<_>>(),
         "alive": w.factions.iter().map(|f| f.alive).collect::<Vec<_>>(),
-        "rank": w.player.map(|f| w.rank(f)),
+        "rank": me.map(|f| w.rank(f)),
         "accounts": accounts,
-        "actions_left": w.player.map(|f| g.factions[f].actions.saturating_sub(w.player_actions)),
+        "actions_left": me.map(|f| g.factions[f].actions.saturating_sub(w.player_actions[f])),
+        "players": w.players,
+        "fingerprint": format!("{:016x}", w.fingerprint()),
         "values": values,
         "violence": s["violence"],
         "captures": s["captures"],
@@ -226,7 +288,7 @@ fn state(w: &World, map: Option<usize>) -> Value {
         "raids": s.get("m.Raids"),
         "troops": troops(w),
         "fights": fights(w),
-        "relations": w.player.map(|f| w.relation[f].iter().map(|r| r.name()).collect::<Vec<_>>()),
+        "relations": me.map(|f| w.relation[f].iter().map(|r| r.name()).collect::<Vec<_>>()),
         "battles": s.get("battles"),
         "destroyed": s.get("destroyed"),
     })
@@ -255,7 +317,7 @@ fn troops(w: &World) -> Value {
             .into_iter()
             .map(|(id, f, k, p, n, s, hp)| {
                 let mut t = json!({ "id": id, "f": f, "k": k, "p": p, "n": n, "s": (f64::from(s) * 100.0).round() / 100.0, "hp": hp });
-                if Some(f as usize) == w.player {
+                if w.players.contains(&(f as usize)) {
                     if let Some(tr) = w.troop(id) {
                         t["path"] = json!(tr.path);
                     }
@@ -266,7 +328,7 @@ fn troops(w: &World) -> Value {
     )
 }
 
-fn place(w: &mut World, p: usize) -> Value {
+fn place(w: &mut World, p: usize, me: Option<usize>) -> Value {
     let g = w.game;
     let pl = &w.city.places[p];
     let presence: Vec<Value> = w
@@ -306,14 +368,16 @@ fn place(w: &mut World, p: usize) -> Value {
         "maps": maps,
         "population": pl.fields.get("population").map(|v| v.round()),
     });
-    if let Some(f) = w.player {
+    if let Some(f) = me {
         out["options"] = offers(w, f, Some(p));
     }
     out
 }
 
 fn offers(w: &mut World, f: usize, p: Option<usize>) -> Value {
-    let left = w.game.factions[f].actions.saturating_sub(w.player_actions);
+    let left = w.game.factions[f]
+        .actions
+        .saturating_sub(w.player_actions[f]);
     json!(w
         .options(f, p)
         .into_iter()
@@ -446,6 +510,49 @@ mod tests {
             .filter(|o| o["raise"].is_string())
             .collect();
         assert!(raise.iter().any(|o| o["raise"] == "Battle mech"), "{card}");
+    }
+
+    #[test]
+    fn two_players_share_a_game() {
+        let info = handle(&json!({ "op": "new", "files": marches(), "params": { "provinces": 100 }, "seed": 2, "players": ["realm1", 2] })).unwrap();
+        assert_eq!(info["players"], json!([0, 2]));
+        let hq = |f: u64| {
+            let st = handle(&json!({ "op": "state", "faction": f })).unwrap();
+            st["owner"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .position(|o| o == f)
+                .unwrap()
+        };
+        let p2 = hq(2);
+        let card = handle(&json!({ "op": "place", "place": p2, "faction": 2 })).unwrap();
+        let raise = card["options"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|o| o["raise"].is_string())
+            .unwrap()
+            .clone();
+        let after = handle(
+            &json!({ "op": "take", "decision": raise["decision"], "place": p2, "faction": 2 }),
+        )
+        .unwrap();
+        assert_eq!(
+            after["actions_left"], 1,
+            "the second player used one of its two"
+        );
+        let first = handle(&json!({ "op": "state", "faction": 0 })).unwrap();
+        assert_eq!(first["actions_left"], 2, "the first player still has both");
+        // Not a player: refused.
+        assert!(handle(&json!({ "op": "options", "faction": 1 }))
+            .unwrap_err()
+            .contains("not played"));
+        let fp = handle(&json!({ "op": "fingerprint" })).unwrap();
+        assert_eq!(fp["fingerprint"], first["fingerprint"]);
+        // A player who leaves: the AI takes the faction back.
+        let left = handle(&json!({ "op": "release", "faction": 2 })).unwrap();
+        assert_eq!(left["players"], json!([0]));
     }
 
     #[test]

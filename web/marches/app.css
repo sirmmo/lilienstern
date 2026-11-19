@@ -89,6 +89,20 @@ h3 { margin: 12px 0 4px; font-size: 12px; text-transform: uppercase; letter-spac
 @keyframes pulse { from { transform: scale(.85); } to { transform: scale(1.15); } }
 .tip { position: absolute; z-index: 5; pointer-events: none; background: rgba(20, 18, 26, .88); color: #fff; padding: 2px 8px; border-radius: 6px; font-size: 12px; white-space: nowrap; }
 
+/* Several players */
+.lobby { margin: 10px 0; padding: 10px 12px; border: 2px solid var(--accent); border-radius: 10px; background: var(--soft); }
+.lobby .code { font-size: 18px; }
+.lobby .code b { font-family: ui-monospace, monospace; letter-spacing: .12em; font-size: 22px; }
+.lobby .seats { margin: 8px 0; }
+.lobby .seats div, #players div { display: flex; align-items: center; gap: 6px; margin: 2px 0; }
+.lobby .n, #players .n { margin-left: auto; color: var(--muted); font-size: 13px; }
+.lobby button { padding: 1px 10px; }
+#players { margin: 6px 0; }
+#players .me { font-weight: 700; }
+#players button { padding: 0 6px; font-size: 11px; margin-left: 4px; }
+#joinCode { font: inherit; text-transform: uppercase; letter-spacing: .1em; width: 7em; }
+#turn h2 { display: flex; align-items: center; gap: 8px; }
+
 #news { position: absolute; z-index: 2; left: 10px; bottom: 28px; width: 290px; display: flex; flex-direction: column; gap: 4px; pointer-events: none; }
 #news div { background: rgba(29, 27, 34, .9); color: #fff; border-radius: 7px; padding: 4px 10px; font-size: 13px; animation: fade 9s forwards; }
 #news div.bad { background: rgba(140, 32, 20, .92); }

@@ -156,10 +156,19 @@ layers, and `map.geojson` the last day.
 
 ## Playing
 
-A person can play one faction: `World::player` names it, the AI leaves it alone, and
-`World::options(faction, place)` lists what it can do there (with costs, `chance` taken as met)
+People play factions: `World::players` names them, the AI leaves them alone, and
+`World::options(faction, place)` lists what one can do there (with costs, `chance` taken as met)
 while `World::take` does it, with the same checks the AI faces and the faction's `actions` a
-day. Decisions carry a `label` for players.
+day (counted per player). Troops take orders with `World::order`. Decisions carry a `label` for
+players.
+
+**Several people on one map.** On one device, players take turns and the day runs after the
+last. Online, play is lockstep, as in OpenTactics: every browser runs the engine on the same
+commands in the host's order (decisions, orders, a player taking over or leaving a faction, the
+end of a day), and `World::fingerprint` (FNV-1a over the exact bits of the state, and the
+random generator's position) shows after each day that they still agree. A browser that
+disagrees, or joins late, replays the commands. WebAssembly's arithmetic is IEEE and identical
+in every browser, so the same commands give the same bits; nothing needs sending but commands.
 
 The browser game (`web/gangland-bologna`) runs the engine as WebAssembly. `lilienstern-web`
 exposes three functions with no generated glue: the page writes a JSON request into the
@@ -178,7 +187,7 @@ runs on all cores: the 64 runs of the Marches experiment take about 2 s on 40 co
 ## Next
 
 * **Saves** with stable ids (units, maps, resources by id, not position), so saves survive
-  changes to the rules.
+  changes to the rules. Saves would also let an online game outlive its host's tab.
 * **Events with choices**: options for a player, picked by weight for the AI.
 * **Diplomacy beyond war, peace and alliance**: offers the other side can refuse, vassals,
   relations that drift.
@@ -187,6 +196,5 @@ runs on all cores: the 64 runs of the Marches experiment take about 2 s on 40 co
 * **More for players**: events that ask the player, a history of what happened to them, and
   saving a game in the browser.
 * **Mods**: folders of TOML and scripts laid over a game.
-* **Lockstep multiplayer** on top of determinism.
 * **Calibration**: runs compared with measured data, as the Extended GlassBox paper proposes
   for digital twins.

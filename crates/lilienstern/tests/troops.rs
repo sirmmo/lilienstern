@@ -186,7 +186,7 @@ fn raising_costs_what_the_troop_costs() {
     let d = &g.script.decisions[0];
     assert_eq!(d.costs, vec![(g.rules.resource("Gold").unwrap(), 30.0)]);
     let mut w = World::new(&g, 6).unwrap();
-    w.player = Some(0);
+    w.players = vec![0];
     let hq = w.factions[0].hq.unwrap();
     let opts = w.options(0, Some(hq));
     assert!(opts[0].affordable);
