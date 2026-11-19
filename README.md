@@ -162,6 +162,11 @@ commands, and the server does no simulation.
 players connected, processor and memory, with the last hour in charts. `/stats.json` has the
 same numbers, `/health` answers `ok`. Only totals are shown, never room codes.
 
+**Releasing**: `glassbox` and `lilienstern` are on crates.io. To publish a new version, raise it
+in the root `Cargo.toml` (the workspace version and the `version` of the two path
+dependencies), commit, and push a tag such as `v0.2.0`: the Publish workflow tests and
+publishes both crates, with no stored token (crates.io trusted publishing).
+
 ## Documentation
 
 * [docs/DESIGN.md](docs/DESIGN.md): what the engine is, how a day runs, how GlassBox fits, what

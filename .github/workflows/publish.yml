@@ -1,0 +1,49 @@
+# Publishes glassbox and lilienstern to crates.io when a version tag is pushed:
+#
+#   (raise the version in the root Cargo.toml, workspace and path dependencies, and commit)
+#   git tag v0.2.0 && git push origin v0.2.0
+#
+# No token is stored: crates.io trusts this workflow ("trusted publishing", set up on each
+# crate's settings page on crates.io) and hands it a token that lasts a few minutes.
+# Run by hand (Actions > Publish > Run workflow) it only does a dry run.
+name: Publish
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: crates-io
+    permissions:
+      contents: read
+      id-token: write # to prove to crates.io that this is the workflow it trusts
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.95.0
+        with:
+          components: clippy
+      - name: The tag is the crates' version
+        if: github.ref_type == 'tag'
+        run: |
+          version=$(cargo metadata --no-deps --format-version 1 \
+            | jq -r '.packages[] | select(.name == "lilienstern") | .version')
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::tag $GITHUB_REF_NAME, but Cargo.toml says $version"
+            exit 1
+          fi
+      - run: cargo clippy --all-targets -- -D warnings
+      - run: cargo test
+      - name: Dry run
+        if: github.ref_type != 'tag'
+        run: cargo publish --dry-run -p glassbox -p lilienstern
+      - uses: rust-lang/crates-io-auth-action@v1
+        if: github.ref_type == 'tag'
+        id: auth
+      - name: Publish (glassbox first, then lilienstern)
+        if: github.ref_type == 'tag'
+        run: cargo publish -p glassbox -p lilienstern
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
