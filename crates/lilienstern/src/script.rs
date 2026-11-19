@@ -217,6 +217,14 @@ pub enum Effect {
         op: Op,
         value: f64,
     },
+    /// The faction's resource, by `k` times a map at the place (`global Funds add map
+    /// Population 0.001`): income that follows the land.
+    GlobalByMap {
+        resource: usize,
+        op: Op,
+        map: usize,
+        k: f64,
+    },
     Modifier {
         modifier: usize,
         days: u32,
@@ -502,6 +510,14 @@ fn effect(
             op: c.op(i + 1)?,
             value: c.num(i + 2)?,
         },
+        "global" if c.line.words.get(i + 3).map(String::as_str) == Some("map") => {
+            Effect::GlobalByMap {
+                resource: global(rules, c, c.word(i + 1)?)?,
+                op: c.op(i + 2)?,
+                map: rules.declare_map(c.word(i + 4)?),
+                k: c.num(i + 5)?,
+            }
+        }
         "global" => Effect::Global {
             resource: global(rules, c, c.word(i + 1)?)?,
             op: c.op(i + 2)?,
@@ -738,6 +754,7 @@ pub fn compile(
                         | Effect::Seize
                         | Effect::Destroy { .. }
                         | Effect::Raise { .. }
+                        | Effect::GlobalByMap { .. }
                         | Effect::March { .. }
                         | Effect::SetRelation(_)
                 )

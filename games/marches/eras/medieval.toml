@@ -15,7 +15,7 @@ relation = "war"
 [[terrain]]
 id = "mountains"
 field = "elevation"
-above = 0.67
+above = $mountains_above
 defense = 3
 move_cost = { foot = 3 }          # horses cannot cross
 color = "#8d8173"
@@ -23,7 +23,7 @@ color = "#8d8173"
 [[terrain]]
 id = "hills"
 field = "elevation"
-above = 0.59
+above = $hills_above
 defense = 2
 move_cost = { foot = 1.6, horse = 2 }
 color = "#b5a77f"
@@ -31,7 +31,7 @@ color = "#b5a77f"
 [[terrain]]
 id = "forest"
 field = "forest"
-above = 0.58
+above = $forest_above
 defense = 2
 move_cost = { foot = 1.5, horse = 2.5 }
 color = "#5d8a52"

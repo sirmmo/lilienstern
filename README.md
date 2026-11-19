@@ -17,7 +17,9 @@ slowed by terrain, share places with allies, and fight enemies where they meet.
 
 **[Play Gangland: Bologna](https://ingmmo.com/lilienstern/gangland-bologna/)**: run a gang in
 Bologna's 2,606 census sections, in your browser. **[Play Marches](https://ingmmo.com/lilienstern/marches/)**:
-rule a realm, raise troops and march them to war, medieval or futuristic. Documentation:
+rule a realm, raise troops and march them to war, medieval or futuristic.
+**[Play Italia](https://ingmmo.com/lilienstern/italia/)**: lead a noble family (Savoia, Visconti,
+Medici, Este, Aragona...) across ISTAT's Italy of 1871, on real mountains and plains. Documentation:
 **[ingmmo.com/lilienstern](https://ingmmo.com/lilienstern/)**.
 
 Named after Otto August Rühle von Lilienstern (1780–1847), Prussian officer, military writer
@@ -86,6 +88,21 @@ plains, forests, hills, mountains and a river crossed only at its bridges.
 
 See [the experiment](docs/EXPERIMENTS.md#marches-experiment) on alliances and eras.
 
+## Italia
+
+Marches on a real map: Italy as ISTAT drew it for the 1871 census (284 circondari and
+distretti, or 69 provinces), largely the old provinces of the Italian states, taken as the
+lands fought over in the centuries before. Up to 16 noble families start at their historical
+seats; each area's taxes and recruits follow its 1871 population, its terrain its real
+elevation (SRTM), and Sicily and Sardinia are reached by sea. The decisions and troops are
+Marches' (`games/italia` includes them); `tools/italia.py` builds the maps
+([sources](games/italia/maps/README.md)).
+
+```sh
+./target/release/lilienstern run games/italia --seed 1 --map out/italia
+./target/release/lilienstern run games/italia --set map=province --set families=16
+```
+
 ## Documentation
 
 * [docs/DESIGN.md](docs/DESIGN.md): what the engine is, how a day runs, how GlassBox fits, what
@@ -103,7 +120,7 @@ See [the experiment](docs/EXPERIMENTS.md#marches-experiment) on alliances and er
 | `crates/lilienstern` | The engine: maps (generated or GeoJSON), games, factions, scripts, the AI, control, troops, metrics, experiments. |
 | `crates/lilienstern-cli` | The `lilienstern` command. |
 | `crates/lilienstern-web` | The engine as WebAssembly, driven by JSON messages, for the browser. |
-| `web/gangland-bologna`, `web/marches` | The browser games. `tools/site.py` builds the site (docs and games). |
+| `web/gangland-bologna`, `web/marches`, `web/italia` | The browser games (Italia is the Marches page with its own start screen). `tools/site.py` builds the site (docs and games). |
 
 ## License
 

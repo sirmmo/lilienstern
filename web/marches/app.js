@@ -1,8 +1,20 @@
-// Marches. The Lilienstern engine runs as WebAssembly (lilienstern.wasm); this page sends it
-// JSON requests (see crates/lilienstern-web) and draws the land and its troops with MapLibre.
+// Marches (and games built like it, such as Italia). The Lilienstern engine runs as
+// WebAssembly (lilienstern.wasm); this page sends it JSON requests (see crates/lilienstern-web)
+// and draws the land and its troops with MapLibre.
+//
+// A page can set `window.GAME` before loading this script to play another game with the same
+// troops and decisions: which files to load (paths as the game names them, fetched from
+// game/), the parameters its start screen sets, and which parameter says how many factions play.
 
-const GAME_FILES = ['params.toml', 'game.toml', 'realms.lil', 'eras/medieval.toml', 'eras/future.toml'];
-const VIEWS = { Wealth: 'Wealth', Fort: 'Castles', Violence: 'Battles' };
+const radio = (name) => document.querySelector(`input[name=${name}]:checked`).value;
+const CONFIG = Object.assign({
+  id: 'marches',
+  files: () => ['params.toml', 'game.toml', 'realms.lil', 'eras/medieval.toml', 'eras/future.toml'],
+  probe: { provinces: 40 }, // a quick game, to learn the factions' names and colours
+  params: () => ({ era: radio('era'), provinces: +radio('size') }),
+  count: null, // the parameter with the number of factions that play, if the start screen sets it
+}, window.GAME || {});
+const VIEWS = { Wealth: 'Wealth', Population: 'People', Elevation: 'Elevation', Fort: 'Castles', Violence: 'Battles' };
 const TWEEN_MS = 450;
 // Icons (web/marches/icons, see the README there): troops by era and id, decisions by name.
 const DECISION_ICONS = ['settle', 'govern', 'fortify', 'defend', 'attack', 'occupy', 'make_peace', 'declare_war', 'ally'];
@@ -48,9 +60,9 @@ function call(request) {
   return answer;
 }
 
-async function files() {
+async function files(params) {
   const out = {};
-  for (const f of GAME_FILES) {
+  for (const f of CONFIG.files(params)) {
     if (!texts[f]) {
       const r = await fetch('game/' + f);
       if (!r.ok) throw new Error(`${f}: ${r.status}`);
@@ -63,23 +75,31 @@ async function files() {
 
 // ---------- start ----------
 
-const radio = (name) => document.querySelector(`input[name=${name}]:checked`).value;
+let realms = [];
+
+/** The factions to choose from: those that will play with the start screen's settings. */
+function realmChoice() {
+  const n = CONFIG.count ? +CONFIG.params()[CONFIG.count] : realms.length;
+  const list = realms.slice(0, n);
+  if (!list.some((r) => r.i === player)) player = list.length ? list[0].i : 0;
+  $('realmChoice').innerHTML = '';
+  list.forEach((r) => {
+    const b = document.createElement('button');
+    b.innerHTML = `<i class="chip" style="background:${r.color}"></i>${r.name}`;
+    if (r.i === player) b.classList.add('on');
+    b.onclick = () => { player = r.i; [...$('realmChoice').children].forEach((c) => c.classList.remove('on')); b.classList.add('on'); };
+    $('realmChoice').appendChild(b);
+  });
+}
 
 async function boot() {
   $('seed').value = 1 + Math.floor(Math.random() * 9999);
   try {
     await loadEngine();
-    // A first, tiny game, to learn the realms' names and colours.
-    const probe = call({ op: 'new', files: await files(), params: { provinces: 40 }, seed: 1 });
-    const realms = probe.factions.map((f, i) => ({ ...f, i })).filter((f) => f.holds);
-    $('realmChoice').innerHTML = '';
-    realms.forEach((r, k) => {
-      const b = document.createElement('button');
-      b.innerHTML = `<i class="chip" style="background:${r.color}"></i>${r.name}`;
-      b.onclick = () => { player = r.i; [...$('realmChoice').children].forEach((c) => c.classList.remove('on')); b.classList.add('on'); };
-      if (k === 0) { b.classList.add('on'); player = r.i; }
-      $('realmChoice').appendChild(b);
-    });
+    const probe = call({ op: 'new', files: await files({ ...CONFIG.params(), ...CONFIG.probe }), params: CONFIG.probe, seed: 1 });
+    realms = probe.factions.map((f, i) => ({ ...f, i })).filter((f) => f.holds);
+    realmChoice();
+    if (CONFIG.count) document.querySelectorAll(`input[name=${CONFIG.count}]`).forEach((i) => { i.onchange = realmChoice; });
     $('bStart').disabled = false;
   } catch (e) {
     $('startError').textContent = 'The engine did not start: ' + e.message;
@@ -90,9 +110,10 @@ async function start() {
   $('bStart').disabled = true;
   $('bStart').textContent = 'Drawing the land…';
   try {
-    era = radio('era');
+    const params = CONFIG.params();
+    era = params.era || 'medieval';
     document.body.classList.toggle('future', era === 'future');
-    info = call({ op: 'new', files: await files(), params: { era, provinces: +radio('size') }, seed: +$('seed').value || 1, player });
+    info = call({ op: 'new', files: await files(params), params, seed: +$('seed').value || 1, player });
     st = info.state;
     info.geojson.features.forEach((f, i) => { f.properties.idx = i; });
     centres = info.geojson.features.map((f) => f.properties.centre);
@@ -106,7 +127,9 @@ async function start() {
     lastPos = new Map();
     setupHud();
     drawMap();
-    if (!localStorage.getItem('marches.seenHelp')) { $('help').hidden = false; localStorage.setItem('marches.seenHelp', '1'); }
+    try {
+      if (!localStorage.getItem(`${CONFIG.id}.seenHelp`)) { $('help').hidden = false; localStorage.setItem(`${CONFIG.id}.seenHelp`, '1'); }
+    } catch { /* no storage: no reminder */ }
   } catch (e) {
     $('startError').textContent = e.message;
   } finally {
@@ -141,7 +164,7 @@ function drawMap() {
   const style = {
     version: 8,
     sources: {
-      places: { type: 'geojson', data: info.geojson, attribution: 'Lilienstern · Marches' },
+      places: { type: 'geojson', data: info.geojson, attribution: ['Lilienstern', info.name, info.credit].filter(Boolean).join(' · ') },
       routes: { type: 'geojson', data: empty() },
       preview: { type: 'geojson', data: empty() },
     },
@@ -484,6 +507,8 @@ function card() {
     ter ? `<span>Terrain</span><span>${ter.name}${ter.defense ? ` (+${ter.defense})` : ''}</span>` : '',
     `<span>Castles</span><span>${fmt(c.maps.Fort || 0)}</span>`,
     `<span>Wealth</span><span>${fmt(c.maps.Wealth || 0)}</span>`,
+    'Population' in c.maps ? `<span>People (1871)</span><span>${Math.round(c.maps.Population * 1000).toLocaleString('en')}</span>` : '',
+    'Elevation' in c.maps ? `<span>Elevation</span><span>${Math.round(c.maps.Elevation)} m</span>` : '',
   ].join('');
   const top = Math.max(40, ...c.presence.map((p) => p.presence));
   const bars = c.presence.sort((a, b) => b.presence - a.presence).map((p) => {
@@ -599,7 +624,7 @@ function gameOver() {
   const rows = info.factions.map((f, i) => ({ f, i, n: st.territory[i] })).filter((r) => r.f.holds).sort((a, b) => b.n - a.n);
   const place = rows.findIndex((r) => r.i === player) + 1;
   const all = st.territory[player] === st.owner.length;
-  $('overTitle').textContent = all ? 'The land is yours' : !st.alive[player] ? 'Your realm has fallen' : 'Three years later';
+  $('overTitle').textContent = all ? 'The land is yours' : !st.alive[player] ? 'Your realm has fallen' : `${Math.round(info.days / 365)} years later`;
   const cup = all || place === 1 ? 'cup-gold' : st.alive[player] ? 'cup-laurel' : 'cup-dark';
   $('overText').innerHTML = `<img class="cup" src="icons/${cup}.jpg" alt=""><p>On day ${st.day} you are <b>#${place}</b> of ${rows.length}, holding <b>${st.territory[player]}</b> provinces.</p>`
     + rows.map((r) => `<div><i class="chip" style="background:${r.f.color}"></i> ${r.f.name}: ${r.n}</div>`).join('')

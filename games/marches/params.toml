@@ -9,6 +9,9 @@ map_seed = -1             # -1: a new land for every seed; a number: the same la
 bridges = 4               # where troops can cross the river
 map_file = ""             # a real map instead: a GeoJSON or a MapLibre style
 basemap = ""              # under the map viewer ("": automatic)
+mountains_above = 0.67    # terrain: a place's elevation field above this is mountains (eras/*.toml)
+hills_above = 0.59        # ...above this, hills
+forest_above = 0.58       # its forest field above this is forest
 
 # Realms
 realms = 5

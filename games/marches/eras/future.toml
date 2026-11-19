@@ -16,7 +16,7 @@ relation = "war"
 [[terrain]]
 id = "mountains"
 field = "elevation"
-above = 0.67
+above = $mountains_above
 defense = 3
 move_cost = { boots = 2.5, hover = 1.5 }   # tracks cannot climb
 color = "#7b7f8a"
@@ -24,7 +24,7 @@ color = "#7b7f8a"
 [[terrain]]
 id = "hills"
 field = "elevation"
-above = 0.59
+above = $hills_above
 defense = 2
 move_cost = { boots = 1.5, tracks = 2, hover = 1.2 }
 color = "#a5a58c"
@@ -32,7 +32,7 @@ color = "#a5a58c"
 [[terrain]]
 id = "forest"
 field = "forest"
-above = 0.58
+above = $forest_above
 defense = 1
 move_cost = { boots = 1.3, tracks = 2, hover = 1 }
 color = "#4f7a5a"

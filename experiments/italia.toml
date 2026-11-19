@@ -1,0 +1,19 @@
+name = "Who takes Italy"
+question = "On ISTAT's 1871 Italy, with eight families at their historical seats, who ends up holding the most, and does the cut of the land (284 circondari or 69 provinces) change it?"
+description = """
+Italia, eight families (Savoia, Visconti, Della Scala, Medici, Este, Colonna, Aragona,
+Chiaramonte), five years, medieval troops. Taxes and recruits follow the 1871 population;
+terrain follows real elevation; Sicily and Sardinia are reached by sea.
+"""
+game = "../games/italia"
+days = 1825
+seeds = 16
+report = ["territory.family1", "territory.family2", "territory.family3", "territory.family4", "territory.family5", "territory.family6", "territory.family7", "territory.family8", "gangs_alive", "top_share", "battles", "destroyed"]
+geojson = true
+
+[[variant]]
+name = "circondari"
+
+[[variant]]
+name = "provinces"
+set = { map = "province" }

@@ -81,6 +81,14 @@ pub struct CityDef {
     /// itself, else "osm" for an imported map and "none" for a generated one.
     #[serde(default)]
     pub basemap: Option<String>,
+    /// Imported places: extra borders, by place name (`[["Messina", "Reggio di Calabria"]]`):
+    /// straits, sea routes.
+    #[serde(default)]
+    pub links: Vec<[String; 2]>,
+    /// Imported places: join every group of places cut off from the largest (islands) to its
+    /// nearest place in it, instead of dropping them.
+    #[serde(default)]
+    pub connect: bool,
 }
 
 impl CityDef {
@@ -151,6 +159,59 @@ impl City {
     pub fn distance(&self, a: usize, b: usize) -> f64 {
         let (p, q) = (self.places[a].centre, self.places[b].centre);
         ((p[0] - q[0]).powi(2) + (p[1] - q[1]).powi(2)).sqrt()
+    }
+
+    /// Groups of connected places, largest first: the group of each place.
+    fn components(&self) -> (Vec<usize>, usize) {
+        let n = self.places.len();
+        let mut comp = vec![usize::MAX; n];
+        let mut sizes: Vec<usize> = Vec::new();
+        for s in 0..n {
+            if comp[s] != usize::MAX {
+                continue;
+            }
+            let c = sizes.len();
+            comp[s] = c;
+            let mut stack = vec![s];
+            let mut size = 0;
+            while let Some(p) = stack.pop() {
+                size += 1;
+                for &q in &self.neighbours[p] {
+                    if comp[q] == usize::MAX {
+                        comp[q] = c;
+                        stack.push(q);
+                    }
+                }
+            }
+            sizes.push(size);
+        }
+        let best = (0..sizes.len())
+            .max_by_key(|&c| (sizes[c], usize::MAX - c))
+            .unwrap_or(0);
+        (comp, best)
+    }
+
+    /// Joins each group of places cut off from the largest to it, by a border between the
+    /// closest pair of places (centre to centre): a sea crossing.
+    fn connect_islands(&mut self) {
+        loop {
+            let (comp, main) = self.components();
+            let Some(other) = (0..comp.len()).map(|p| comp[p]).find(|&c| c != main) else {
+                return;
+            };
+            let mut best: Option<(f64, usize, usize)> = None;
+            for a in (0..comp.len()).filter(|&p| comp[p] == other) {
+                for b in (0..comp.len()).filter(|&p| comp[p] == main) {
+                    let d = self.distance(a, b);
+                    if best.map_or(true, |(bd, _, _)| d < bd) {
+                        best = Some((d, a, b));
+                    }
+                }
+            }
+            let Some((_, a, b)) = best else { return };
+            self.neighbours[a].push(b);
+            self.neighbours[b].push(a);
+        }
     }
 
     /// Keeps the largest group of connected places.
@@ -669,6 +730,20 @@ pub fn from_value(json: &serde_json::Value, def: &CityDef, seed: u64) -> Result<
                 city.neighbours[j].push(i);
             }
         }
+    }
+    for [a, b] in &def.links {
+        let find = |name: &str| {
+            city.places
+                .iter()
+                .position(|p| p.name.eq_ignore_ascii_case(name.trim()))
+                .ok_or_else(|| format!("links: there is no place called {name:?}"))
+        };
+        let (a, b) = (find(a)?, find(b)?);
+        city.neighbours[a].push(b);
+        city.neighbours[b].push(a);
+    }
+    if def.connect {
+        city.connect_islands();
     }
     for n in &mut city.neighbours {
         n.sort_unstable();

@@ -1,0 +1,76 @@
+name = "Italia"
+description = "Noble families fight over Italy, as cut by ISTAT's units of 1871 (the old provinces of the Italian states), raising troops and marching them across real mountains and plains."
+scripts = ["../marches/realms.lil", "italia.lil"]
+include = ["../marches/eras/$era.toml"]     # troops and terrain, shared with Marches
+days = $days
+sample_every = 5
+
+[city]
+geojson = "maps/italia-1871-$map.geojson"
+name_property = "name"
+connect = true            # islands join the mainland where it is closest (Sicily at Messina)
+basemap = "$basemap"
+
+[[map]]
+id = "Wealth"
+init = "wealth"
+max = 100
+
+[[map]]
+id = "Population"         # thousands of people (1871)
+init = "population"
+scale = 0.001
+
+[[map]]
+id = "Elevation"          # metres, the mean of the place
+init = "elevation"
+min = -100
+
+[[map]]
+id = "Fort"
+max = 3
+
+[[map]]
+id = "Violence"
+decay = 0.05
+max = 100
+
+[[resource]]
+id = "Funds"
+scope = "global"
+
+[[resource]]
+id = "Recruits"
+scope = "global"
+
+# The families, in the order `families` takes them, each at its historical seat.
+[[faction]]
+id = "family"
+kind = "realm"
+count = $families
+name = "Family"
+names = ["Savoia", "Visconti", "Della Scala", "Medici", "Este", "Colonna", "Aragona", "Chiaramonte",
+         "Doria", "Gonzaga", "Montefeltro", "Bentivoglio", "Orsini", "Arborea", "Sanseverino", "Malatesta"]
+capital = ["Torino", "Milano", "Verona", "Firenze", "Ferrara", "Roma", "Napoli", "Palermo",
+           "Genova", "Mantova", "Urbino|Pesaro e Urbino", "Bologna", "Taranto|Terra d'Otranto",
+           "Oristano|Cagliari", "Salerno|Principato Citeriore", "Rimini|Forlì"]
+colors = ["#c62828", "#1e88e5", "#f9a825", "#8e24aa", "#212121", "#ef6c00", "#d81b60", "#3949ab",
+          "#6d4c41", "#ff8a65", "#00acc1", "#880e4f", "#00695c", "#ffee58", "#455a64", "#ba68c8"]
+start = { Funds = $start_funds, Recruits = $start_recruits }
+start_troops = ["light", "light", "heavy"]
+start_presence = $start_presence
+start_radius = $start_radius
+team = "$teams"
+actions = $family_actions
+noise = 0.3
+saving = "goal"
+
+[control]
+hold = 20
+margin = 1.3
+decay = $presence_decay
+contest = 1e9
+attrition = 0
+violence = 0
+on_capture = "seize"
+hotspot = 5

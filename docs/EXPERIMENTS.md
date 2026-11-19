@@ -180,6 +180,41 @@ future era's (`era = "future"`), with the same land and decisions.
 * The spread is wide (the standard deviations are as large as the means): which realm wins
   depends on where the capitals fall and who meets whom first, as in the genre.
 
+## Italia's experiment
+
+### Who takes Italy (`experiments/italia.toml`)
+
+Eight families at their seats on ISTAT's 1871 Italy (Savoia in Torino, Visconti in Milano, Della
+Scala in Verona, Medici in Firenze, Este in Ferrara, Colonna in Roma, Aragona in Napoli,
+Chiaramonte in Palermo), five years, 16 seeds; taxes and recruits follow the 1871 population,
+terrain the real elevation. Territory at the end, in places:
+
+| | circondari (284) | provinces (69) |
+|---|---:|---:|
+| Savoia | 53.1 ± 74.4 | 13.9 ± 12.5 |
+| Visconti | 83.6 ± 80.3 | 8.2 ± 11.6 |
+| Della Scala | 2.2 ± 8.8 | 10.5 ± 10.9 |
+| Medici | 26.7 ± 59.4 | 8.4 ± 9.6 |
+| Este | 0 | 0.4 ± 1.5 |
+| Colonna | 15.6 ± 53.0 | 3.8 ± 7.3 |
+| Aragona | 1.1 ± 3.8 | 1.6 ± 3.6 |
+| Chiaramonte | 101.7 ± 37.5 | 22.2 ± 3.3 |
+| families left | 2.8 | 3.8 |
+| `top_share` | 0.59 | 0.38 |
+| largest at the end | Visconti 8, Savoia 4, Medici 2, Colonna 1, Chiaramonte 1 | Chiaramonte 4, Della Scala 4, Savoia 4, Visconti 2, Colonna 1, Medici 1 |
+
+* **Sicily holds and takes the South.** Chiaramonte is never destroyed and has the steadiest
+  result: the island is rich, and the only way in is the strait, which one army can hold. From
+  there it takes Calabria and Naples: Aragona, in Napoli, almost always falls to it. The
+  Kingdom of Sicily, once again, without being told to.
+* **In the North, the Po valley decides.** Visconti or Savoia usually end up largest: the
+  plain is rich and quick to cross. Este, in Ferrara between Milan, Verona and Florence, never
+  survives.
+* **The cut of the land changes the war.** On 69 provinces, each a large and slow conquest,
+  almost four families are left after five years and the largest holds 38% of Italy; on 284
+  circondari, under three are left and the largest holds 59%. The same areal-unit effect as
+  Gangland's granularity experiment, on a real map.
+
 ## Ideas for more
 
 * **Poverty and recruitment**: make aggression grow with crew and see whether the shock result

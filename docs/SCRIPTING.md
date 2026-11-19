@@ -71,6 +71,8 @@ both is an error.
 | `name_property` | "name" | imported places: the property with the name |
 | `fields` | | imported places: fields from other properties, as `{ wealth = "income_index" }` |
 | `synthesize` | true | imported places missing `wealth`, `density` or `population` get them as a generated city would |
+| `links` | | imported places: extra borders by place name, `[["Messina", "Reggio di Calabria"]]` (straits, sea routes) |
+| `connect` | false | imported places: join each group cut off from the largest (islands) to its nearest place, instead of dropping it |
 | `basemap` | | what map viewers draw underneath: "none", "osm", a MapLibre style URL or file. Default: the imported style, else "osm" for imported places and "none" for a generated city |
 
 Generated places have the fields `x`, `y` (-1 to 1), `centrality`, `wealth` (0 to 100),
@@ -140,6 +142,8 @@ saving = "short"              # or "goal": see below
 team = "north"                # factions of the same team start allied; with count > 1, a
                               # list or a comma-separated string, one per copy ("a,a,,")
 start_troops = ["light", "heavy"]   # troops at the headquarters
+capital = "Milano"            # the headquarters, by place name ("Urbino|Pesaro e Urbino": the
+                              # first the map has); with count > 1, a list, one per copy
 ```
 
 A faction with `start_presence`, `start_units` or `start_troops` gets a headquarters. `gang`
@@ -367,6 +371,7 @@ always read the target.
 | `all presence add\|mul\|set n` | every gang's presence at the place |
 | `turf add\|mul\|set n` | the faction's presence in every place it holds |
 | `global R add\|mul\|set n` | the faction's resource |
+| `global R add\|mul\|set map M k` | the faction's resource, by k x the map at the place (income that follows the land) |
 | `modifier NAME days` | |
 | `build U` | a unit of the faction at the place |
 | `seize` | other factions' units at the place become the faction's |

@@ -314,7 +314,14 @@ impl<'g> World<'g> {
             if cands.is_empty() {
                 continue;
             }
-            let hq = if chosen.is_empty() {
+            let named = def.capital.iter().find_map(|name| {
+                (0..n).find(|&p| {
+                    !chosen.contains(&p) && self.city.places[p].name.eq_ignore_ascii_case(name)
+                })
+            });
+            let hq = if let Some(p) = named {
+                p
+            } else if chosen.is_empty() {
                 cands[self.rng.below(cands.len())]
             } else {
                 let dist: Vec<f64> = cands
@@ -778,6 +785,18 @@ impl<'g> World<'g> {
                 if let Some(f) = ctx.faction {
                     let v = &mut self.gb.accounts[self.factions[f].account][resource];
                     *v = op.apply(*v, value).max(0.0);
+                }
+            }
+            Effect::GlobalByMap {
+                resource,
+                op,
+                map,
+                k,
+            } => {
+                if let Some((f, p)) = fp {
+                    let x = k * self.gb.maps[map][p];
+                    let v = &mut self.gb.accounts[self.factions[f].account][resource];
+                    *v = op.apply(*v, x).max(0.0);
                 }
             }
             Effect::Modifier { modifier, days } => {

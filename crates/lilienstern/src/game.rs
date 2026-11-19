@@ -194,6 +194,11 @@ struct FactionToml {
     /// Troops at the headquarters at the start.
     #[serde(default)]
     start_troops: Vec<String>,
+    /// Where the headquarters is, by place name ("Milano"; "Urbino|Pesaro e Urbino" tries each
+    /// in turn); with `count` above 1, a list or a comma-separated string, one per copy. A name
+    /// the map does not have leaves the choice to `hq_field` and `hq_spacing`.
+    #[serde(default)]
+    capital: Option<toml::Value>,
 }
 
 /// How gangs hold places and fight over them, every day:
@@ -329,6 +334,8 @@ pub struct FactionDef {
     /// Factions with the same team start as allies.
     pub team: Option<String>,
     pub start_troops: Vec<usize>,
+    /// Names the headquarters may have, tried in turn.
+    pub capital: Vec<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -370,6 +377,29 @@ fn amounts(rules: &mut Rules, what: &str, t: &toml::Table) -> Result<Vec<(usize,
         out.push((rules.declare_resource(k, glassbox::Scope::Global)?, x));
     }
     Ok(out)
+}
+
+/// A value given per copy of a faction: a list, or for several copies a comma-separated
+/// string (one name for a single copy).
+fn per_copy(
+    v: &Option<toml::Value>,
+    count: u32,
+    id: &str,
+    what: &str,
+) -> Result<Vec<String>, String> {
+    Ok(match v {
+        None => Vec::new(),
+        Some(toml::Value::String(s)) if count > 1 => {
+            s.split(',').map(|t| t.trim().to_string()).collect()
+        }
+        Some(toml::Value::String(s)) => vec![s.trim().to_string()],
+        Some(toml::Value::Array(a)) => a
+            .iter()
+            .map(|v| v.as_str().map(|s| s.trim().to_string()))
+            .collect::<Option<_>>()
+            .ok_or_else(|| format!("faction {id}: {what} must be names"))?,
+        Some(_) => return Err(format!("faction {id}: {what} must be a name or a list")),
+    })
 }
 
 /// Merges an included file into the game's table: lists of tables (`[[troop]]`) are appended,
@@ -497,6 +527,7 @@ impl Game {
                         .ok_or_else(|| format!("faction {}: there is no troop {t:?}", f.id))?,
                 );
             }
+            let capitals = per_copy(&f.capital, f.count, &f.id, "capital")?;
             let teams: Vec<String> = match &f.team {
                 None => Vec::new(),
                 Some(toml::Value::String(s)) if f.count > 1 => {
@@ -571,6 +602,15 @@ impl Game {
                     }
                     .filter(|t| !t.is_empty()),
                     start_troops: start_troops.clone(),
+                    capital: capitals
+                        .get(i as usize)
+                        .map(|c| {
+                            c.split('|')
+                                .map(|x| x.trim().to_string())
+                                .filter(|x| !x.is_empty())
+                                .collect()
+                        })
+                        .unwrap_or_default(),
                 });
             }
         }

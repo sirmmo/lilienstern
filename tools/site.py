@@ -23,6 +23,7 @@ PAGES = [
     ("docs/SCRIPTING.md", "scripting.html", "Writing a game"),
     ("docs/EXPERIMENTS.md", "experiments.html", "Experiments"),
     ("games/gangland/maps/README.md", "maps.html", "Maps"),
+    ("games/italia/maps/README.md", "italia-maps.html", "Italia's maps"),
 ]
 LINKS = {src: out for src, out, _ in PAGES}
 
@@ -98,6 +99,7 @@ def nav(current):
     items.append(f'<a href="{REPO}">GitHub</a>')
     items.append('<a class="play push" href="gangland-bologna/">Play Gangland: Bologna</a>')
     items.append('<a class="play" href="marches/">Play Marches</a>')
+    items.append('<a class="play" href="italia/">Play Italia</a>')
     return "".join(items)
 
 
@@ -139,6 +141,19 @@ def main():
     os.makedirs(os.path.join(game, "eras"))
     for f in ["params.toml", "game.toml", "realms.lil", "eras/medieval.toml", "eras/future.toml"]:
         shutil.copy(os.path.join(ROOT, "games", "marches", f), os.path.join(game, f))
+
+    # Italia: the Marches page with Italia's start screen, its files and Marches' shared ones.
+    play = os.path.join(out, "italia")
+    shutil.copytree(os.path.join(ROOT, "web", "marches"), play, ignore=shutil.ignore_patterns("index.html"))
+    shutil.copy(os.path.join(ROOT, "web", "italia", "index.html"), play)
+    shutil.copy(a.wasm, os.path.join(play, "lilienstern.wasm"))
+    game = os.path.join(play, "game")
+    for f in ["params.toml", "game.toml", "italia.lil", "maps/italia-1871-circondari.geojson", "maps/italia-1871-province.geojson"]:
+        os.makedirs(os.path.dirname(os.path.join(game, f)), exist_ok=True)
+        shutil.copy(os.path.join(ROOT, "games", "italia", f), os.path.join(game, f))
+    for f in ["realms.lil", "eras/medieval.toml", "eras/future.toml"]:
+        os.makedirs(os.path.dirname(os.path.join(game, "marches", f)), exist_ok=True)
+        shutil.copy(os.path.join(ROOT, "games", "marches", f), os.path.join(game, "marches", f))
     with open(os.path.join(out, ".nojekyll"), "w"):
         pass
     total = sum(os.path.getsize(os.path.join(d, f)) for d, _, fs in os.walk(out) for f in fs)

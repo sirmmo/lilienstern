@@ -1,0 +1,22 @@
+# Italia's economy: what a place pays and gives follows its people (1871 census, in thousands),
+# so Napoli or Milano are worth more than an Alpine valley. The decisions and the troops are
+# Marches' (../marches/realms.lil, ../marches/eras/).
+
+event taxes
+    scope place
+    for realm
+    do global Funds add map Population $tax_per_thousand
+end
+
+event rich_taxes
+    scope place
+    for realm
+    if map Wealth greater 60
+    do global Funds add map Population $rich_tax_per_thousand
+end
+
+event muster
+    scope place
+    for realm
+    do global Recruits add map Population $recruits_per_thousand
+end

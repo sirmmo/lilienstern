@@ -1,0 +1,39 @@
+# Italia's numbers. Each one can be changed with `--set name=value` or in an experiment, and is
+# used as $name in game.toml and the scripts (Italia shares Marches' decisions and troops).
+
+# The land: ISTAT's units of the 1871 census (see maps/README.md)
+map = "circondari"        # "circondari" (284 circondari and distretti) or "province" (69 provinces)
+basemap = "none"          # under the map viewer: "none", "osm", or a MapLibre style
+era = "medieval"          # troops: ../marches/eras/medieval.toml or future.toml
+days = 1825               # five years
+
+# The families
+families = 8              # how many of the 16 families play (in the order of game.toml)
+teams = ""                # e.g. "guelfi,,guelfi" makes families 1 and 3 allies
+start_funds = 120
+start_recruits = 40
+start_presence = 50       # at the family seat (60% next to it)
+start_radius = 1
+family_actions = 2        # decisions per day
+max_army = 16
+
+# Terrain from real elevation (mean of the place, in metres) and no forest data
+mountains_above = 700
+hills_above = 300
+forest_above = 2
+
+# Economy, per day, per thousand people of each place held (1871 census)
+tax = 0                   # Marches' flat taxes are off: Italia's follow the population
+rich_tax = 0
+recruits = 0
+tax_per_thousand = 0.0017
+rich_tax_per_thousand = 0.0008   # more where wealth is above 60
+recruits_per_thousand = 0.00085
+
+# What decisions cost and do (Marches' decisions)
+settle_cost = 12
+govern_cost = 4
+fort_cost = 40
+peace_cost = 60
+alliance_cost = 40
+presence_decay = 0.002
