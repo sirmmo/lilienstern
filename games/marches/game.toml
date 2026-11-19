@@ -1,0 +1,67 @@
+name = "Marches"
+description = "Realms raise troops and march them across a land of provinces, rivers, hills and forests: they settle, fortify, fight, and make peace or alliances. The troops come from the era: levies and knights, or militia and hovertanks."
+scripts = ["realms.lil"]
+include = ["eras/$era.toml"]     # [war], [[terrain]] and [[troop]]
+days = 1095
+sample_every = 5
+
+[city]
+neighborhoods = $provinces
+radius_km = $radius_km
+river = true
+bridges = $bridges
+enclaves = 3
+city_seed = $map_seed
+geojson = "$map_file"
+basemap = "$basemap"
+
+[[map]]
+id = "Wealth"
+init = "wealth"
+max = 100
+
+[[map]]
+id = "Fort"            # castles or bunkers: defence stars, and slower sieges
+max = 3
+
+[[map]]
+id = "Violence"        # where battles were fought
+decay = 0.05
+max = 100
+
+[[resource]]
+id = "Funds"
+scope = "global"
+
+[[resource]]
+id = "Recruits"
+scope = "global"
+
+[[faction]]
+id = "realm"
+kind = "realm"
+count = $realms
+name = "Realm"
+names = ["Aldmark", "Brennholt", "Corvania", "Dunmere", "Estvale", "Feyrland", "Galdor", "Harrowmere"]
+colors = ["#c0392b", "#2f5fb3", "#8e44ad", "#e67e22", "#d6338a", "#17a2b8", "#6d4c41", "#f1c40f"]   # none of them green, to stand out from the land
+start = { Funds = $start_funds, Recruits = $start_recruits }
+start_troops = ["light", "light", "heavy"]
+start_presence = $start_presence
+start_radius = 2
+hq_spacing = 0.7
+team = "$teams"
+actions = $realm_actions
+noise = 0.3
+saving = "goal"            # keep saving for a dear troop instead of buying a cheap one
+
+# Realms hold provinces by presence, which only troops and decisions change: no clashes of
+# presence (contest is out of reach), slow decay.
+[control]
+hold = 20
+margin = 1.3
+decay = $presence_decay
+contest = 1e9
+attrition = 0
+violence = 0
+on_capture = "seize"
+hotspot = 5

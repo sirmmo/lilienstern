@@ -10,7 +10,8 @@
 //! ```
 //!
 //! Requests (`op`): `new` (start a game from files in memory), `state`, `place`, `options`,
-//! `take`, `step`, `summary`. Answers carry `error` when something went wrong.
+//! `take`, `step`, `summary`, and for troops `route` (where a troop would go, and how long it
+//! takes) and `order` (send it). Answers carry `error` when something went wrong.
 
 use std::cell::RefCell;
 use std::collections::BTreeMap;
@@ -104,6 +105,20 @@ pub fn handle(req: &Value) -> Result<Value, String> {
                 Ok(state(w, req["map"].as_u64().map(|m| m as usize)))
             }
             "summary" => Ok(json!(w.summary())),
+            "route" | "order" => {
+                let f = w.player.ok_or("nobody plays")?;
+                let id = req["troop"].as_u64().ok_or("which troop?")? as u32;
+                let to = place_arg(w, &req["to"])?.ok_or("where to?")?;
+                if !w.troop(id).is_some_and(|t| t.faction == f) {
+                    return Err("that troop is not yours".into());
+                }
+                let r = if op == "order" {
+                    w.order(f, id, to)?
+                } else {
+                    w.route(id, to).ok_or("your troop cannot get there")?
+                };
+                Ok(json!({ "path": r.path, "days": r.days }))
+            }
             _ => Err(format!("unknown op {op:?}")),
         }
     })
@@ -153,7 +168,16 @@ fn start(req: &Value) -> Result<Value, String> {
         "days": game.days,
         "places": world.city.len(),
         "geojson": to_geojson(&world),
-        "factions": game.factions.iter().map(|f| json!({ "id": f.id, "name": f.name, "color": f.color, "gang": f.kind == Kind::Gang, "actions": f.actions })).collect::<Vec<_>>(),
+        "factions": game.factions.iter().map(|f| json!({ "id": f.id, "name": f.name, "color": f.color, "gang": f.kind == Kind::Gang, "holds": f.kind.holds(), "actions": f.actions })).collect::<Vec<_>>(),
+        "troopKinds": game.war.troops.iter().map(|t| json!({
+            "id": t.id, "name": t.name, "icon": t.icon, "speed": t.speed, "move": game.war.moves[t.move_type],
+            "occupy": t.occupy, "description": t.description,
+            "cost": t.cost.iter().map(|&(r, v)| json!({ "resource": game.rules.resources[r].id, "amount": v })).collect::<Vec<_>>(),
+            "damage": game.war.troops.iter().zip(&t.damage).map(|(o, d)| (o.id.clone(), json!(d))).collect::<serde_json::Map<_, _>>(),
+        })).collect::<Vec<_>>(),
+        "terrains": game.war.terrains.iter().map(|t| json!({ "id": t.id, "name": t.name, "color": t.color, "defense": t.defense })).collect::<Vec<_>>(),
+        "terrain": world.terrain.iter().map(|t| t.map_or(-1, |t| t as i64)).collect::<Vec<_>>(),
+        "kmDistances": game.war.km,
         "maps": game.rules.maps.iter().map(|m| m.id.clone()).collect::<Vec<_>>(),
         "player": world.player,
         "credit": world.city.attribution,
@@ -200,14 +224,53 @@ fn state(w: &World, map: Option<usize>) -> Value {
         "captures": s["captures"],
         "hotspots_today": w.hotspots,
         "raids": s.get("m.Raids"),
+        "troops": troops(w),
+        "fights": fights(w),
+        "relations": w.player.map(|f| w.relation[f].iter().map(|r| r.name()).collect::<Vec<_>>()),
+        "battles": s.get("battles"),
+        "destroyed": s.get("destroyed"),
     })
+}
+
+/// Places where troops of factions at war share the place: battles go on there.
+fn fights(w: &World) -> Vec<usize> {
+    let mut at: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
+    for t in &w.troops {
+        let fs = at.entry(t.place).or_default();
+        if !fs.contains(&t.faction) {
+            fs.push(t.faction);
+        }
+    }
+    at.into_iter()
+        .filter(|(_, fs)| fs.iter().any(|&a| fs.iter().any(|&b| w.hostile(a, b))))
+        .map(|(p, _)| p)
+        .collect()
+}
+
+/// Every troop: id, faction, kind, place, next place (-1: none), share of the way there,
+/// health; and for the player's, the places still ahead.
+fn troops(w: &World) -> Value {
+    Value::Array(
+        w.troop_positions()
+            .into_iter()
+            .map(|(id, f, k, p, n, s, hp)| {
+                let mut t = json!({ "id": id, "f": f, "k": k, "p": p, "n": n, "s": (f64::from(s) * 100.0).round() / 100.0, "hp": hp });
+                if Some(f as usize) == w.player {
+                    if let Some(tr) = w.troop(id) {
+                        t["path"] = json!(tr.path);
+                    }
+                }
+                t
+            })
+            .collect(),
+    )
 }
 
 fn place(w: &mut World, p: usize) -> Value {
     let g = w.game;
     let pl = &w.city.places[p];
     let presence: Vec<Value> = w
-        .gangs
+        .holders
         .iter()
         .filter(|&&h| w.presence[h][p] > 0.5)
         .map(|&h| json!({ "faction": h, "presence": round1(w.presence[h][p]) }))
@@ -226,10 +289,18 @@ fn place(w: &mut World, p: usize) -> Value {
         .enumerate()
         .map(|(m, d)| (d.id.clone(), json!(round1(w.gb.maps[m][p]))))
         .collect();
+    let here: Vec<Value> = w
+        .troops
+        .iter()
+        .filter(|t| t.place == p)
+        .map(|t| json!({ "id": t.id, "faction": t.faction, "kind": t.kind, "hp": t.hp.round(), "moving": !t.path.is_empty(), "to": t.path.last() }))
+        .collect();
     let mut out = json!({
         "place": p,
         "name": pl.name,
         "owner": w.owner[p],
+        "troops": here,
+        "terrain": w.terrain[p],
         "presence": presence,
         "units": units,
         "maps": maps,
@@ -251,6 +322,10 @@ fn offers(w: &mut World, f: usize, p: Option<usize>) -> Value {
             "name": o.name,
             "label": o.label,
             "affordable": o.affordable && left > 0,
+            "raise": w.game.script.decisions[o.decision].effects.iter().find_map(|e| match e {
+                lilienstern::script::Effect::Raise { troop } => Some(w.game.war.troops[*troop].name.clone()),
+                _ => None,
+            }),
             "costs": o.costs.iter().map(|(r, v)| json!({ "resource": r, "amount": v })).collect::<Vec<_>>(),
         }))
         .collect::<Vec<_>>())
@@ -276,6 +351,101 @@ mod tests {
             );
         }
         Value::Object(m)
+    }
+
+    fn marches() -> Value {
+        let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../../games/marches/");
+        let mut m = serde_json::Map::new();
+        for f in [
+            "params.toml",
+            "game.toml",
+            "realms.lil",
+            "eras/medieval.toml",
+            "eras/future.toml",
+        ] {
+            m.insert(
+                f.into(),
+                json!(std::fs::read_to_string(format!("{dir}{f}")).unwrap()),
+            );
+        }
+        Value::Object(m)
+    }
+
+    #[test]
+    fn a_player_marches_troops() {
+        let info = handle(&json!({ "op": "new", "files": marches(), "params": { "provinces": 120, "era": "future" }, "seed": 5, "player": "realm2" })).unwrap();
+        assert_eq!(info["troopKinds"][3]["name"], "Hovertank");
+        assert_eq!(
+            info["terrain"].as_array().unwrap().len(),
+            info["places"].as_u64().unwrap() as usize
+        );
+        let st = &info["state"];
+        let mine: Vec<&Value> = st["troops"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|t| t["f"] == 1)
+            .collect();
+        assert_eq!(mine.len(), 3, "three troops at the start");
+        let id = mine[0]["id"].clone();
+        let from = mine[0]["p"].as_u64().unwrap() as usize;
+        // Somewhere it can reach, a few places away.
+        let n = info["places"].as_u64().unwrap();
+        let (to, route) = (0..n)
+            .filter(|&p| p as usize != from)
+            .find_map(|p| {
+                handle(&json!({ "op": "route", "troop": id, "to": p }))
+                    .ok()
+                    .filter(|r| r["path"].as_array().unwrap().len() >= 3)
+                    .map(|r| (p, r))
+            })
+            .unwrap();
+        let days = route["days"].as_u64().unwrap();
+        let order = handle(&json!({ "op": "order", "troop": id, "to": to })).unwrap();
+        assert_eq!(order, route);
+        let st = handle(&json!({ "op": "state" })).unwrap();
+        let me = st["troops"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|t| t["id"] == id)
+            .unwrap()
+            .clone();
+        assert!(!me["path"].as_array().unwrap().is_empty());
+        assert_eq!(st["relations"][1], "ally", "a realm is its own ally");
+        // Others' troops cannot be ordered.
+        let theirs = st["troops"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|t| t["f"] != 1)
+            .unwrap()["id"]
+            .clone();
+        assert!(handle(&json!({ "op": "order", "troop": theirs, "to": to })).is_err());
+        let later = handle(&json!({ "op": "step", "days": days + 1 })).unwrap();
+        if let Some(t) = later["troops"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|t| t["id"] == id)
+        {
+            assert!(t["p"] != from as u64, "it has left: {t}");
+        }
+        // Raising: the decision carries the troop's name and cost.
+        let held = later["owner"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .position(|o| o == 1)
+            .unwrap();
+        let card = handle(&json!({ "op": "place", "place": held })).unwrap();
+        let raise: Vec<&Value> = card["options"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|o| o["raise"].is_string())
+            .collect();
+        assert!(raise.iter().any(|o| o["raise"] == "Battle mech"), "{card}");
     }
 
     #[test]

@@ -1,0 +1,186 @@
+# Marches: what realms do. The troops they raise (light, ranged, heavy, fast) are declared by
+# the era (eras/medieval.toml, eras/future.toml), so the same decisions raise levies or militia.
+
+# ---- The economy: every province pays and gives men ----
+
+event taxes
+    scope place
+    for realm
+    do global Funds add $tax
+end
+
+event rich_taxes
+    scope place
+    for realm
+    if map Wealth greater 50
+    do global Funds add $rich_tax
+end
+
+event muster
+    scope place
+    for realm
+    do global Recruits add $recruits
+end
+
+# ---- Land ----
+
+decision settle
+    label Settle
+    for realm
+    target adjacent
+    if owner none
+    if threat is 0
+    cost Funds $settle_cost
+    do presence add 25
+    weight 1.5
+    weight map Wealth 0.03
+end
+
+decision govern
+    label Govern
+    for realm
+    target owned
+    if presence less 30
+    if foes is 0
+    cost Funds $govern_cost
+    do presence add 12
+    weight 0.6
+    weight threat 0.5
+end
+
+decision fortify
+    label Fortify
+    for realm
+    target owned
+    if map Fort less 3
+    if foes is 0
+    cost Funds $fort_cost
+    do map Fort add 1
+    weight 0.1
+    weight threat 0.6
+    weight map Wealth 0.004
+end
+
+# ---- Troops ----
+
+decision raise_light
+    label Raise light troops
+    for realm
+    target owned
+    if foes is 0
+    if army less $max_army
+    do raise light
+    weight 0.5
+    weight threat 0.4
+end
+
+decision raise_ranged
+    label Raise ranged troops
+    for realm
+    target owned
+    if foes is 0
+    if army less $max_army
+    do raise ranged
+    weight 0.7
+    weight threat 0.3
+end
+
+decision raise_heavy
+    label Raise heavy troops
+    for realm
+    target owned
+    if foes is 0
+    if army less $max_army
+    do raise heavy
+    weight 1.6
+    weight threat 0.6
+end
+
+decision raise_fast
+    label Raise fast troops
+    for realm
+    target owned
+    if foes is 0
+    if army less $max_army
+    do raise fast
+    weight 1.4
+    weight threat 0.3
+end
+
+decision attack
+    label Attack
+    for realm
+    target adjacent
+    if owner other
+    if relation war
+    if idle atLeast 2
+    do march 3
+    weight 2.5
+    weight map Wealth 0.04
+    weight foes -1.5
+    weight map Fort -0.6
+end
+
+decision occupy
+    label Take
+    for realm
+    target adjacent
+    if owner none
+    if idle atLeast 1
+    do march 1
+    weight 0.8
+    weight map Wealth 0.02
+end
+
+decision defend
+    label Defend
+    for realm
+    target owned
+    if threat greater 0.3
+    if idle atLeast 1
+    do march 2
+    weight threat 3
+end
+
+# ---- Diplomacy: with the realm that holds the target ----
+
+decision make_peace
+    label Make peace
+    for realm
+    target adjacent
+    if owner other
+    if relation war
+    if threat greater 2
+    cost Funds $peace_cost
+    do relation peace
+    weight 0.4
+    weight threat 0.2
+    log Truces
+end
+
+decision declare_war
+    label Declare war
+    for realm
+    target adjacent
+    if owner other
+    if relation peace
+    if army atLeast 8
+    do relation war
+    weight 0.3
+    every 20
+    log Wars
+end
+
+decision ally
+    label Propose an alliance
+    for realm
+    target adjacent
+    if owner other
+    if relation peace
+    cost Funds $alliance_cost
+    chance 0.3
+    do relation ally
+    weight 0.1
+    every 30
+    log Alliances
+end

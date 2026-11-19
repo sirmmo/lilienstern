@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Builds Lilienstern's web site: the documentation and the playable Gangland: Bologna.
+"""Builds Lilienstern's web site: the documentation and the playable games (Gangland: Bologna,
+Marches).
 
     cargo build --release --target wasm32-unknown-unknown -p lilienstern-web
     python3 tools/site.py [--out site] [--wasm target/wasm32-unknown-unknown/release/lilienstern_web.wasm]
@@ -41,7 +42,8 @@ TEMPLATE = """<!doctype html>
   nav a {{ color: #ddd; text-decoration: none; }}
   nav a:hover, nav a.on {{ color: #fff; text-decoration: underline; }}
   nav .brand {{ font-weight: 700; color: #fff; font-size: 18px; margin-right: 8px; }}
-  nav .play {{ margin-left: auto; background: var(--accent); color: #fff; padding: 3px 12px; border-radius: 6px; }}
+  nav .play {{ background: var(--accent); color: #fff; padding: 3px 12px; border-radius: 6px; }}
+  nav .push {{ margin-left: auto; }}
   main {{ max-width: 900px; margin: 0 auto; padding: 10px 20px 60px; }}
   h1, h2, h3 {{ line-height: 1.25; }}
   h1 {{ font-size: 34px; }}
@@ -94,7 +96,8 @@ def nav(current):
     for _, out, title in PAGES[1:]:
         items.append(f'<a href="{out}"{" class=on" if out == current else ""}>{title}</a>')
     items.append(f'<a href="{REPO}">GitHub</a>')
-    items.append('<a class="play" href="gangland-bologna/">Play Gangland: Bologna</a>')
+    items.append('<a class="play push" href="gangland-bologna/">Play Gangland: Bologna</a>')
+    items.append('<a class="play" href="marches/">Play Marches</a>')
     return "".join(items)
 
 
@@ -128,6 +131,14 @@ def main():
         shutil.copy(os.path.join(ROOT, "games", "gangland", f), game)
     for f in ["bologna-areas.geojson", "bologna-sections.geojson"]:
         shutil.copy(os.path.join(ROOT, "games", "gangland", "maps", f), os.path.join(game, "maps"))
+
+    play = os.path.join(out, "marches")
+    shutil.copytree(os.path.join(ROOT, "web", "marches"), play)
+    shutil.copy(a.wasm, os.path.join(play, "lilienstern.wasm"))
+    game = os.path.join(play, "game")
+    os.makedirs(os.path.join(game, "eras"))
+    for f in ["params.toml", "game.toml", "realms.lil", "eras/medieval.toml", "eras/future.toml"]:
+        shutil.copy(os.path.join(ROOT, "games", "marches", f), os.path.join(game, f))
     with open(os.path.join(out, ".nojekyll"), "w"):
         pass
     total = sum(os.path.getsize(os.path.join(d, f)) for d, _, fs in os.walk(out) for f in fs)

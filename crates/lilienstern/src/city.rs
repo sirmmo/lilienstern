@@ -99,8 +99,9 @@ pub struct Place {
     /// Outline, in metres.
     pub ring: Vec<[f64; 2]>,
     /// Values maps can start from: `x`, `y` (-1 to 1), `centrality` (1 at the centre, 0 at the
-    /// edge), `area_km2`, and for a generated city `wealth`, `density`, `population`; imported
-    /// places add their numeric properties.
+    /// edge), `area_km2`, and for a generated city `wealth`, `density`, `population`,
+    /// `elevation` and `forest` (0 to 1, for terrain); imported places add their numeric
+    /// properties (and the generated ones they lack, with `synthesize`).
     pub fields: BTreeMap<String, f64>,
 }
 
@@ -258,6 +259,15 @@ fn synthetic(x: f64, y: f64, radius: f64, seed: u64, enclaves: &[[f64; 2]]) -> (
     (wealth.clamp(2.0, 100.0), density)
 }
 
+/// Elevation and forest cover (0 to 1) at a point of a map of this radius: smooth fields for
+/// terrain, independent of how the map is cut into places.
+fn landscape(x: f64, y: f64, radius: f64, seed: u64) -> (f64, f64) {
+    let k = radius.max(1.0) / 3.0;
+    let elevation = fbm(seed ^ 0xE1E7, x / k, y / k);
+    let forest = fbm(seed ^ 0xF0E5, x / (0.6 * k), y / (0.6 * k));
+    (elevation.clamp(0.0, 1.0), forest.clamp(0.0, 1.0))
+}
+
 /// Generates a round city of about `def.neighborhoods` hexagonal neighbourhoods.
 pub fn generate(def: &CityDef, seed: u64) -> City {
     let seed = if def.city_seed >= 0 {
@@ -310,7 +320,10 @@ pub fn generate(def: &CityDef, seed: u64) -> City {
             let c = 1.0 - d / radius;
             let (wealth, density) = synthetic(x, y, radius, seed, &enclaves);
             let area_km2 = 1.5 * sq3 * s * s / 1e6;
+            let (elevation, forest) = landscape(x, y, radius, seed);
             let fields = BTreeMap::from([
+                ("elevation".to_string(), elevation),
+                ("forest".to_string(), forest),
                 ("x".to_string(), x / radius),
                 ("y".to_string(), y / radius),
                 ("centrality".to_string(), c),
@@ -583,6 +596,9 @@ pub fn from_value(json: &serde_json::Value, def: &CityDef, seed: u64) -> Result<
         if def.synthesize {
             let (wealth, density) = synthetic(p.centre[0], p.centre[1], far, seed, &enclaves);
             p.fields.entry("wealth".into()).or_insert(wealth);
+            let (elevation, forest) = landscape(p.centre[0], p.centre[1], far, seed);
+            p.fields.entry("elevation".into()).or_insert(elevation);
+            p.fields.entry("forest".into()).or_insert(forest);
             if !p.fields.contains_key("density") && !p.fields.contains_key("population") {
                 p.fields.insert("density".into(), density);
             }

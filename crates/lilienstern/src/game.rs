@@ -45,6 +45,7 @@ use serde::Deserialize;
 use crate::city::CityDef;
 use crate::params::Params;
 use crate::script::{self, Kind, Script};
+use crate::war::{TerrainToml, TroopToml, War, WarToml};
 
 fn d_days() -> u32 {
     730
@@ -70,6 +71,9 @@ fn d_patience() -> u32 {
 fn d_choice() -> String {
     "weighted".into()
 }
+fn d_saving() -> String {
+    "short".into()
+}
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -92,6 +96,12 @@ struct GameToml {
     #[serde(rename = "faction")]
     factions: Vec<FactionToml>,
     control: ControlDef,
+    #[serde(default)]
+    war: WarToml,
+    #[serde(default, rename = "terrain")]
+    terrains: Vec<TerrainToml>,
+    #[serde(default, rename = "troop")]
+    troops: Vec<TroopToml>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -161,6 +171,8 @@ struct FactionToml {
     patience: u32,
     #[serde(default = "d_choice")]
     choice: String,
+    #[serde(default = "d_saving")]
+    saving: String,
     #[serde(default)]
     start_units: Vec<String>,
     #[serde(default)]
@@ -175,6 +187,13 @@ struct FactionToml {
     /// How far apart headquarters are, as a share of the largest possible spacing (0 to 1).
     #[serde(default = "d_spacing")]
     hq_spacing: f64,
+    /// Factions of the same team are allies. With `count` above 1, a list (or a comma-separated
+    /// string) gives each one its own; an empty name is a team of one.
+    #[serde(default)]
+    team: Option<toml::Value>,
+    /// Troops at the headquarters at the start.
+    #[serde(default)]
+    start_troops: Vec<String>,
 }
 
 /// How gangs hold places and fight over them, every day:
@@ -296,12 +315,20 @@ pub struct FactionDef {
     /// How the AI picks among its decisions: `Weighted` (at random, in proportion to their
     /// scores) or `Best` (the highest score).
     pub choice: Choice,
+    /// While saving, keep saving for the decision first picked (`saving = "goal"`) rather than
+    /// for whatever unaffordable decision is picked next (`"short"`, the default). With
+    /// `"short"`, a cheap decision picked in between ends the saving, so dear ones are rarely
+    /// bought.
+    pub save_for_goal: bool,
     pub start_units: Vec<usize>,
     pub start_presence: f64,
     pub start_radius: u32,
     pub hq_field: Option<String>,
     pub hq_max: f64,
     pub hq_spacing: f64,
+    /// Factions with the same team start as allies.
+    pub team: Option<String>,
+    pub start_troops: Vec<usize>,
 }
 
 #[derive(Clone, Debug)]
@@ -322,6 +349,8 @@ pub struct Game {
     pub control: ControlDef,
     pub violence_map: usize,
     pub police_map: Option<usize>,
+    /// Troops, terrain and how they fight (empty when the game has no troops).
+    pub war: War,
     pub script: Script,
     pub warnings: Vec<String>,
 }
@@ -341,6 +370,22 @@ fn amounts(rules: &mut Rules, what: &str, t: &toml::Table) -> Result<Vec<(usize,
         out.push((rules.declare_resource(k, glassbox::Scope::Global)?, x));
     }
     Ok(out)
+}
+
+/// Merges an included file into the game's table: lists of tables (`[[troop]]`) are appended,
+/// tables are merged, and a value set twice is an error.
+fn merge(into: &mut toml::Table, from: toml::Table, file: &str) -> Result<(), String> {
+    for (k, v) in from {
+        match (into.get_mut(&k), v) {
+            (None, v) => {
+                into.insert(k, v);
+            }
+            (Some(toml::Value::Array(a)), toml::Value::Array(b)) => a.extend(b),
+            (Some(toml::Value::Table(a)), toml::Value::Table(b)) => merge(a, b, file)?,
+            (Some(_), _) => return Err(format!("{file}: {k} is already set in game.toml")),
+        }
+    }
+    Ok(())
 }
 
 impl Game {
@@ -368,7 +413,25 @@ impl Game {
         };
         params.apply(overrides)?;
         let text = params.substitute("game.toml", &read("game.toml")?)?;
-        let g: GameToml = toml::from_str(&text).map_err(|e| format!("game.toml: {e}"))?;
+        let mut table: toml::Table =
+            toml::from_str(&text).map_err(|e| format!("game.toml: {e}"))?;
+        if let Some(inc) = table.remove("include") {
+            let list = inc
+                .as_array()
+                .ok_or("game.toml: include must be a list of files")?
+                .clone();
+            for f in list {
+                let f = f
+                    .as_str()
+                    .ok_or("game.toml: include must be a list of files")?;
+                let text = params.substitute(f, &read(f)?)?;
+                let t: toml::Table = toml::from_str(&text).map_err(|e| format!("{f}: {e}"))?;
+                merge(&mut table, t, f)?;
+            }
+        }
+        let g: GameToml = toml::Value::Table(table)
+            .try_into()
+            .map_err(|e| format!("game.toml: {e}"))?;
 
         let mut rules = Rules::default();
         let mut map_init = Vec::new();
@@ -407,11 +470,16 @@ impl Game {
         for u in &g.units {
             rules.declare_unit(&u.id, u.name.as_deref().unwrap_or(&u.id));
         }
+        let war = War::build(&mut rules, &g.war, &g.terrains, &g.troops)?;
 
         let mut factions = Vec::new();
         for f in &g.factions {
-            let kind = Kind::parse(&f.kind)
-                .ok_or_else(|| format!("faction {}: kind must be gang, police or other", f.id))?;
+            let kind = Kind::parse(&f.kind).ok_or_else(|| {
+                format!(
+                    "faction {}: kind must be gang, realm, police or other",
+                    f.id
+                )
+            })?;
             let start = amounts(&mut rules, &format!("faction {} start", f.id), &f.start)?;
             let income = amounts(&mut rules, &format!("faction {} income", f.id), &f.income)?;
             let mut start_units = Vec::new();
@@ -422,6 +490,26 @@ impl Game {
                         .ok_or_else(|| format!("faction {}: there is no unit {u:?}", f.id))?,
                 );
             }
+            let mut start_troops = Vec::new();
+            for t in &f.start_troops {
+                start_troops.push(
+                    war.troop(t)
+                        .ok_or_else(|| format!("faction {}: there is no troop {t:?}", f.id))?,
+                );
+            }
+            let teams: Vec<String> = match &f.team {
+                None => Vec::new(),
+                Some(toml::Value::String(s)) if f.count > 1 => {
+                    s.split(',').map(|t| t.trim().to_string()).collect()
+                }
+                Some(toml::Value::String(s)) => vec![s.trim().to_string()],
+                Some(toml::Value::Array(a)) => a
+                    .iter()
+                    .map(|v| v.as_str().map(|s| s.trim().to_string()))
+                    .collect::<Option<_>>()
+                    .ok_or_else(|| format!("faction {}: team must be names", f.id))?,
+                Some(_) => return Err(format!("faction {}: team must be a name or a list", f.id)),
+            };
             for i in 0..f.count {
                 let (id, name) = if f.count == 1 {
                     (f.id.clone(), f.name.clone().unwrap_or_else(|| f.id.clone()))
@@ -460,12 +548,29 @@ impl Game {
                             ))
                         }
                     },
+                    save_for_goal: match f.saving.as_str() {
+                        "short" => false,
+                        "goal" => true,
+                        c => {
+                            return Err(format!(
+                                "faction {}: saving must be \"short\" or \"goal\", not {c:?}",
+                                f.id
+                            ))
+                        }
+                    },
                     start_units: start_units.clone(),
                     start_presence: f.start_presence,
                     start_radius: f.start_radius,
                     hq_field: f.hq_field.clone(),
                     hq_max: f.hq_max,
                     hq_spacing: f.hq_spacing.clamp(0.0, 1.0),
+                    team: if teams.len() == 1 && f.count == 1 {
+                        Some(teams[0].clone())
+                    } else {
+                        teams.get(i as usize).cloned()
+                    }
+                    .filter(|t| !t.is_empty()),
+                    start_troops: start_troops.clone(),
                 });
             }
         }
@@ -477,7 +582,8 @@ impl Game {
             let (w, rest) = glassbox::compile(&mut rules, file, &text, &script::KINDS)
                 .map_err(|e| e.to_string())?;
             warnings.extend(w);
-            script::compile(&mut script, &mut rules, file, &rest).map_err(|e| e.to_string())?;
+            script::compile(&mut script, &mut rules, &war, file, &rest)
+                .map_err(|e| e.to_string())?;
         }
         // Maps the scripts declared start at 0.
         while map_init.len() < rules.maps.len() {
@@ -510,6 +616,7 @@ impl Game {
             control: g.control,
             violence_map,
             police_map,
+            war,
             script,
             warnings,
         })
@@ -519,17 +626,15 @@ impl Game {
     pub fn summary(&self) -> String {
         let r = &self.rules;
         let s = &self.script;
-        let gangs = self
-            .factions
-            .iter()
-            .filter(|f| f.kind == Kind::Gang)
-            .count();
+        let gangs = self.factions.iter().filter(|f| f.kind.holds()).count();
         format!(
-            "{}: {} maps, {} resources, {} units, {} unit rules, {} map rules, {} agent rules, {} events, {} decisions, {} modifiers, {} factions ({} gangs), {} metrics",
+            "{}: {} maps, {} resources, {} units, {} troops, {} terrains, {} unit rules, {} map rules, {} agent rules, {} events, {} decisions, {} modifiers, {} factions ({} hold territory), {} metrics",
             self.name,
             r.maps.len(),
             r.resources.len(),
             r.units.len(),
+            self.war.troops.len(),
+            self.war.terrains.len(),
             r.unit_rules.len(),
             r.map_rules.len(),
             r.agent_rules.len(),

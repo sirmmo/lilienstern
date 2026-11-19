@@ -202,7 +202,7 @@ fn command(a: &Args) -> Result<(), String> {
                 if !a.quiet && (d % step == 0 || d == days) {
                     let s = w.summary();
                     let terr: Vec<String> = w
-                        .gangs
+                        .holders
                         .iter()
                         .filter(|&&h| w.factions[h].territory > 0)
                         .map(|&h| format!("{}:{}", g.factions[h].id, w.factions[h].territory))

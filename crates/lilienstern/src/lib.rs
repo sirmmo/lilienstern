@@ -7,7 +7,9 @@
 //!   agents carrying them along the map, values per place that spread and fade;
 //! * the **politics** in Lilienstern's own blocks: events, decisions the factions' AI weighs
 //!   and takes, and timed modifiers, with conditions and effects scoped to a faction and a
-//!   place.
+//!   place;
+//! * **troops** declared in the game (levies or hovertanks), which march along the map on the
+//!   daily clock, share places with allies and fight enemies ([`war`]).
 //!
 //! Every number can be a parameter (`$name`), and experiments run a game under several
 //! parameter sets and seeds. Runs are deterministic.
@@ -20,6 +22,7 @@ pub mod params;
 pub mod rng;
 pub mod script;
 pub mod viewer;
+pub mod war;
 pub mod world;
 
 pub use game::Game;

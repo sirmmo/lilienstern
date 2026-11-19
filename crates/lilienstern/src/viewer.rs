@@ -179,14 +179,19 @@ fn page_data(w: &World) -> Result<Value, String> {
                     }
                 })
                 .collect();
-            json!({ "day": f.day, "owner": f.owner, "territory": f.territory, "maps": m })
+            let troops: Vec<Value> = f
+                .troops
+                .iter()
+                .map(|t| json!([t.1, t.2, t.3, t.4, (f64::from(t.5) * 100.0).round() / 100.0, t.6]))
+                .collect();
+            json!({ "day": f.day, "owner": f.owner, "territory": f.territory, "maps": m, "troops": troops })
         })
         .collect();
     let factions: Vec<Value> = g
         .factions
         .iter()
         .enumerate()
-        .map(|(i, f)| json!({ "id": f.id, "name": f.name, "color": f.color, "holds": w.gangs.contains(&i) }))
+        .map(|(i, f)| json!({ "id": f.id, "name": f.name, "color": f.color, "holds": w.holders.contains(&i) }))
         .collect();
     let credit = [
         Some(format!("Lilienstern · {}", g.name)),
@@ -207,6 +212,13 @@ fn page_data(w: &World) -> Result<Value, String> {
         "maps": maps,
         "frames": frames,
         "violence": g.rules.maps[g.violence_map].id,
+        "centres": w.city.places.iter().map(|p| {
+            let ll = w.city.lonlat(p.centre);
+            json!([(ll[0] * 1e5).round() / 1e5, (ll[1] * 1e5).round() / 1e5])
+        }).collect::<Vec<_>>(),
+        "troopKinds": g.war.troops.iter().map(|t| json!({ "id": t.id, "name": t.name, "icon": t.icon })).collect::<Vec<_>>(),
+        "terrains": g.war.terrains.iter().map(|t| json!({ "id": t.id, "name": t.name, "color": t.color.clone().unwrap_or_else(|| "#cccccc".into()) })).collect::<Vec<_>>(),
+        "terrain": w.terrain.iter().map(|t| t.map_or(-1, |t| t as i64)).collect::<Vec<_>>(),
     }))
 }
 
@@ -269,6 +281,9 @@ const PAGE: &str = r##"<!doctype html>
   #info { margin-top: 8px; border-top: 1px solid #ddd; padding-top: 6px; }
   #info b { display: block; }
   .muted { color: #666; }
+  .troop { width: 20px; height: 20px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 1px 3px #0008;
+    color: #fff; font: 700 11px/16px system-ui, sans-serif; text-align: center; text-shadow: 0 1px 1px #0009; pointer-events: none; }
+  .troop small { position: absolute; right: -9px; top: -8px; background: #222; color: #fff; border-radius: 7px; padding: 0 4px; font-size: 9px; line-height: 14px; }
 </style>
 </head>
 <body>
@@ -293,6 +308,7 @@ let frame = frames.length - 1, view = 'territory', timer = null;
 
 const sel = $('view');
 sel.add(new Option('Territory', 'territory'));
+if (D.terrains.length) sel.add(new Option('Terrain', 'terrain'));
 D.maps.forEach((m, i) => sel.add(new Option(m.id, String(i))));
 const violence = D.maps.findIndex((m) => m.id === D.violence);
 $('day').max = frames.length - 1;
@@ -300,19 +316,20 @@ $('day').value = frame;
 
 function paint() {
   const f = frames[frame];
-  const vals = view === 'territory' ? null : mapValues(frame, +view);
+  const vals = view === 'territory' || view === 'terrain' ? null : mapValues(frame, +view);
   geo.features.forEach((ft, i) => {
     const o = f.owner[i];
     const fac = o >= 0 ? D.factions[o] : null;
-    ft.properties.fill = fac ? fac.color : '#d8d8d8';
-    ft.properties['fill-opacity'] = fac ? 0.6 : 0.15;
+    const ter = D.terrain[i] >= 0 ? D.terrains[D.terrain[i]] : null;
+    ft.properties.fill = view === 'terrain' ? (ter ? ter.color : '#d8d8d8') : fac ? fac.color : '#d8d8d8';
+    ft.properties['fill-opacity'] = view === 'terrain' ? 0.85 : fac ? 0.6 : 0.15;
     ft.properties.owner_name = fac ? fac.name : null;
     if (vals) ft.properties.v = vals[i] ?? 0;
   });
   const src = map.getSource('lilienstern');
   if (src) src.setData(geo);
   if (map.getLayer('lilienstern-fill')) {
-    if (view === 'territory') {
+    if (view === 'territory' || view === 'terrain') {
       map.setPaintProperty('lilienstern-fill', 'fill-color', ['get', 'fill']);
       map.setPaintProperty('lilienstern-fill', 'fill-opacity', ['get', 'fill-opacity']);
     } else {
@@ -323,10 +340,43 @@ function paint() {
   }
   $('daylabel').textContent = f.day === null ? '' : `day ${f.day}`;
   legend();
+  troops();
+}
+
+// Troops: one marker per faction and spot (a place, or a point on the way to the next), with
+// the kind's mark, or how many when there are several.
+let markers = [];
+function troops() {
+  markers.forEach((m) => m.remove());
+  markers = [];
+  const list = frames[frame].troops || [];
+  const spots = new Map();
+  for (const [fac, kind, p, n, s, hp] of list) {
+    const key = `${fac}:${p}:${n}:${s}`;
+    if (!spots.has(key)) spots.set(key, { fac, p, n, s, kinds: [], hp: 0 });
+    const g = spots.get(key);
+    g.kinds.push(kind); g.hp += hp;
+  }
+  for (const g of spots.values()) {
+    const a = D.centres[g.p], b = g.n >= 0 ? D.centres[g.n] : a;
+    const at = [a[0] + (b[0] - a[0]) * g.s, a[1] + (b[1] - a[1]) * g.s];
+    const el = document.createElement('div');
+    el.className = 'troop';
+    el.style.background = D.factions[g.fac].color;
+    const one = g.kinds.every((k) => k === g.kinds[0]);
+    el.textContent = one ? D.troopKinds[g.kinds[0]].icon : '•';
+    if (g.kinds.length > 1) { const c = document.createElement('small'); c.textContent = g.kinds.length; el.appendChild(c); }
+    el.title = `${D.factions[g.fac].name}: ${g.kinds.map((k) => D.troopKinds[k].name).join(', ')} (${Math.round(g.hp / g.kinds.length)}%)`;
+    markers.push(new maplibregl.Marker({ element: el }).setLngLat(at).addTo(map));
+  }
 }
 
 function legend() {
   const f = frames[frame];
+  if (view === 'terrain') {
+    $('legend').innerHTML = D.terrains.map((t) => `<div><i style="background:${t.color}"></i>${t.name}</div>`).join('');
+    return;
+  }
   if (view !== 'territory') {
     const m = D.maps[+view];
     $('legend').innerHTML = `<div id="ramp"></div><div><span>0</span><span class="n">${m.max.toFixed(1)}</span></div>`;
@@ -334,9 +384,12 @@ function legend() {
   }
   const counts = D.factions.map(() => 0);
   f.owner.forEach((o) => { if (o >= 0) counts[o]++; });
+  const army = D.factions.map(() => 0);
+  (f.troops || []).forEach((t) => army[t[0]]++);
   $('legend').innerHTML = D.factions.filter((x) => x.holds).map((x) => {
     const i = D.factions.indexOf(x);
-    return `<div><i style="background:${x.color}"></i>${x.name}<span class="n">${counts[i]}</span></div>`;
+    const t = D.troopKinds.length ? ` <span class="muted">· ${army[i]} troops</span>` : '';
+    return `<div><i style="background:${x.color}"></i>${x.name}${t}<span class="n">${counts[i]}</span></div>`;
   }).join('') + `<div><i style="background:#d8d8d8"></i>nobody<span class="n">${f.owner.filter((o) => o < 0).length}</span></div>`;
 }
 
@@ -344,7 +397,7 @@ function info(i) {
   if (i == null) { $('info').innerHTML = '<span class="muted">Hover over a place.</span>'; return; }
   const p = geo.features[i].properties;
   const o = frames[frame].owner[i];
-  const rows = D.maps.map((m, k) => `${m.id}: ${(mapValues(frame, k)[i] ?? 0).toFixed(1)}`).join('<br>');
+  const rows = (D.terrain[i] >= 0 ? `Terrain: ${D.terrains[D.terrain[i]].name}<br>` : '') + D.maps.map((m, k) => `${m.id}: ${(mapValues(frame, k)[i] ?? 0).toFixed(1)}`).join('<br>');
   $('info').innerHTML = `<b>${p.name}</b>${o >= 0 ? 'held by ' + D.factions[o].name : '<span class="muted">nobody holds it</span>'}<br>${rows}`;
 }
 

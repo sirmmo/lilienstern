@@ -5,8 +5,13 @@
 //! 3. factions get their **income**;
 //! 4. **events** fire;
 //! 5. every faction's **AI** takes its best decisions;
-//! 6. **control**: gangs clash where they meet, presence decays, places change hands;
-//! 7. **metrics** are recorded.
+//! 6. **troops** march, fight where enemies meet, occupy, are paid and heal ([`troops`]);
+//! 7. **control**: gangs clash where they meet, presence decays, places change hands;
+//! 8. **metrics** are recorded.
+
+mod troops;
+
+pub use troops::{Route, Troop};
 
 use std::collections::BTreeMap;
 
@@ -15,7 +20,8 @@ use glassbox::{around, State};
 use crate::city::{self, City};
 use crate::game::{Choice, Game, MapInit};
 use crate::rng::Rng;
-use crate::script::{Cond, Effect, EventScope, Kind, Op, OwnerTest, Target, Term};
+use crate::script::{Cond, Count, Effect, EventScope, Kind, Op, OwnerTest, Target, Term};
+use crate::war::Relation;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Faction {
@@ -49,6 +55,12 @@ struct Sums {
     violence: f64,
     clashes: f64,
     captures: f64,
+    /// Places where troops fought.
+    battles: f64,
+    /// Health lost by troops in battle (100 is a troop).
+    losses: f64,
+    raised: f64,
+    destroyed: f64,
     metrics: Vec<f64>,
 }
 
@@ -57,6 +69,10 @@ impl Sums {
         self.violence += other.violence;
         self.clashes += other.clashes;
         self.captures += other.captures;
+        self.battles += other.battles;
+        self.losses += other.losses;
+        self.raised += other.raised;
+        self.destroyed += other.destroyed;
         if self.metrics.len() < other.metrics.len() {
             self.metrics.resize(other.metrics.len(), 0.0);
         }
@@ -90,6 +106,8 @@ pub struct Frame {
     pub maps: Vec<Vec<f32>>,
     /// Places held by each faction.
     pub territory: Vec<usize>,
+    /// Troops: (id, faction, kind, place, next place or -1, share of the way there, health).
+    pub troops: Vec<(u32, u16, u16, u32, i32, f32, u8)>,
 }
 
 /// A table of numbers by day.
@@ -134,8 +152,19 @@ pub struct World<'g> {
     pub rng: Rng,
     /// Living units at each place.
     pub units_at: Vec<Vec<usize>>,
-    /// Indices of the gang factions.
-    pub gangs: Vec<usize>,
+    /// Indices of the factions that hold places by presence (gangs, realms).
+    pub holders: Vec<usize>,
+    /// `relation[a][b]`: whether two factions are at war, at peace or allied.
+    pub relation: Vec<Vec<Relation>>,
+    /// Troops alive, in the order they were raised.
+    pub troops: Vec<Troop>,
+    next_troop: u32,
+    /// `strength[faction][place]`: troops there, a full troop counting 1.
+    strength: Vec<Vec<f64>>,
+    /// The terrain of each place (index into the game's terrains).
+    pub terrain: Vec<Option<usize>>,
+    /// Whether every holder is at war with every other (the usual case, and the fast one).
+    at_war: bool,
     /// Places where two gangs clashed today.
     pub contested: usize,
     /// Places above the control's hotspot level today.
@@ -144,6 +173,8 @@ pub struct World<'g> {
     pub taken: Vec<u64>,
     /// Decisions in a row each faction has saved for.
     pub saving: Vec<u32>,
+    /// The decision each faction is saving for (with `saving = "goal"`).
+    goal: Vec<Option<usize>>,
     /// Places that have been hotspots at some point.
     pub ever_hot: Vec<bool>,
     pub series: Series,
@@ -203,8 +234,32 @@ impl<'g> World<'g> {
         let mut w = World {
             game,
             seed,
-            gangs: (0..nf)
-                .filter(|&i| game.factions[i].kind == Kind::Gang)
+            holders: (0..nf).filter(|&i| game.factions[i].kind.holds()).collect(),
+            relation: (0..nf)
+                .map(|a| {
+                    (0..nf)
+                        .map(|b| {
+                            let (ta, tb) = (&game.factions[a].team, &game.factions[b].team);
+                            if a == b || (ta.is_some() && ta == tb) {
+                                Relation::Ally
+                            } else {
+                                game.war.relation
+                            }
+                        })
+                        .collect()
+                })
+                .collect(),
+            troops: Vec::new(),
+            next_troop: 1,
+            at_war: true,
+            strength: vec![vec![0.0; n]; nf],
+            terrain: (0..n)
+                .map(|p| {
+                    game.war
+                        .terrains
+                        .iter()
+                        .position(|t| t.matches(&city.places[p].fields))
+                })
                 .collect(),
             presence: vec![vec![0.0; n]; nf],
             owner: vec![None; n],
@@ -217,6 +272,7 @@ impl<'g> World<'g> {
             hotspots: 0,
             taken: vec![0; game.script.decisions.len()],
             saving: vec![0; nf],
+            goal: vec![None; nf],
             ever_hot: vec![false; n],
             series: Series::default(),
             history: None,
@@ -231,6 +287,7 @@ impl<'g> World<'g> {
             city,
             gb,
         };
+        w.refresh_relations();
         w.place_headquarters();
         w.update_owners(false);
         w.series.columns = w.columns();
@@ -283,6 +340,9 @@ impl<'g> World<'g> {
             for &u in &def.start_units {
                 let id = self.gb.add_unit(&g.rules, u, hq, self.factions[f].account);
                 self.units_at[hq].push(id);
+            }
+            for &t in &def.start_troops {
+                self.raise(f, t, hq);
             }
         }
     }
@@ -388,10 +448,15 @@ impl<'g> World<'g> {
         // 5. Decisions.
         self.decide();
 
-        // 6. Control.
+        // 6. Troops.
+        if !self.troops.is_empty() {
+            self.war();
+        }
+
+        // 7. Control.
         self.control();
 
-        // 7. Metrics.
+        // 8. Metrics.
         self.day += 1;
         self.player_actions = 0;
         self.record();
@@ -513,11 +578,16 @@ impl<'g> World<'g> {
 
     // ---------- queries ----------
 
-    /// The strongest presence at `p` of a gang other than `f`.
+    /// Whether two factions are at war.
+    pub fn hostile(&self, a: usize, b: usize) -> bool {
+        self.relation[a][b] == Relation::War
+    }
+
+    /// The strongest presence at `p` of a holder at war with `f` (any other, with no `f`).
     pub fn rival(&self, f: Option<usize>, p: usize) -> f64 {
-        self.gangs
+        self.holders
             .iter()
-            .filter(|&&h| Some(h) != f)
+            .filter(|&&h| f.map_or(true, |f| h != f && self.hostile(f, h)))
             .map(|&h| self.presence[h][p])
             .fold(0.0, f64::max)
     }
@@ -586,6 +656,10 @@ impl<'g> World<'g> {
                 .is_some_and(|f| cmp.test(self.rank(f) as f64, value)),
             Cond::Day { cmp, value } => cmp.test(f64::from(self.day), value),
             Cond::Chance(p) => self.dry || self.rng.f64() < p,
+            Cond::Count { what, cmp, value } => cmp.test(self.count(what, ctx), value),
+            Cond::Relation(r) => fp.is_some_and(|(f, p)| {
+                self.owner[p].is_some_and(|o| o != f && self.relation[f][o] == r)
+            }),
         }
     }
 
@@ -605,7 +679,42 @@ impl<'g> World<'g> {
                 .place
                 .map_or(0.0, |p| if self.owner[p].is_none() { 1.0 } else { 0.0 }),
             Term::Units(u) => ctx.place.map_or(0.0, |p| self.units_count(p, u) as f64),
+            Term::Count(what) => self.count(what, ctx),
         }
+    }
+
+    fn count(&self, what: Count, ctx: Ctx) -> f64 {
+        match what {
+            Count::Troops => ctx
+                .faction
+                .zip(ctx.place)
+                .map_or(0.0, |(f, p)| self.strength[f][p]),
+            Count::Foes => ctx.place.map_or(0.0, |p| self.foes(ctx.faction, p)),
+            Count::Threat => ctx.place.map_or(0.0, |p| {
+                self.foes(ctx.faction, p)
+                    + self.city.neighbours[p]
+                        .iter()
+                        .map(|&q| self.foes(ctx.faction, q))
+                        .sum::<f64>()
+            }),
+            Count::Army => ctx.faction.map_or(0.0, |f| {
+                self.troops.iter().filter(|t| t.faction == f).count() as f64
+            }),
+            Count::Idle => ctx.faction.map_or(0.0, |f| {
+                self.troops
+                    .iter()
+                    .filter(|t| t.faction == f && t.path.is_empty())
+                    .count() as f64
+            }),
+        }
+    }
+
+    /// Troops at `p` at war with `f` (all troops, with no `f`).
+    pub fn foes(&self, f: Option<usize>, p: usize) -> f64 {
+        (0..self.factions.len())
+            .filter(|&h| f.map_or(true, |f| self.hostile(f, h)))
+            .map(|h| self.strength[h][p])
+            .sum()
     }
 
     // ---------- effects ----------
@@ -642,8 +751,8 @@ impl<'g> World<'g> {
             Effect::Rivals { op, value } | Effect::AllPresence { op, value } => {
                 if let Some(p) = ctx.place {
                     let all = matches!(e, Effect::AllPresence { .. });
-                    for i in 0..self.gangs.len() {
-                        let h = self.gangs[i];
+                    for i in 0..self.holders.len() {
+                        let h = self.holders[i];
                         if all || Some(h) != ctx.faction {
                             let v = &mut self.presence[h][p];
                             *v = op.apply(*v, value).max(0.0);
@@ -721,6 +830,23 @@ impl<'g> World<'g> {
                 }
             }
             Effect::Log { metric, value } => self.logs[metric] += value,
+            Effect::Raise { troop } => {
+                if let Some((f, p)) = fp {
+                    self.raise(f, troop, p);
+                }
+            }
+            Effect::March { count } => {
+                if let Some((f, p)) = fp {
+                    self.march(f, p, count);
+                }
+            }
+            Effect::SetRelation(r) => {
+                if let Some((f, p)) = fp {
+                    if let Some(o) = self.owner[p].filter(|&o| o != f) {
+                        self.set_relation(f, o, r);
+                    }
+                }
+            }
         }
     }
 
@@ -810,15 +936,27 @@ impl<'g> World<'g> {
                         opts.push((score, di, t, affordable));
                     }
                 }
-                let first = self.choose(def.choice, &opts, &|_| true);
+                // Saving for a goal: it comes first while it can still be taken somewhere.
+                let goal = self.goal[f].and_then(|d| opts.iter().position(|o| o.1 == d));
+                if goal.is_none() {
+                    self.goal[f] = None;
+                }
+                let first = match goal {
+                    Some(i) => Some(i),
+                    None => self.choose(def.choice, &opts, &|_| true),
+                };
                 let chosen = match first {
                     None => None,
                     Some(i) if opts[i].3 => {
                         self.saving[f] = 0;
+                        self.goal[f] = None;
                         Some(i)
                     }
                     Some(i) if self.saving[f] < def.patience => {
                         self.saving[f] += 1;
+                        if def.save_for_goal {
+                            self.goal[f] = Some(opts[i].1);
+                        }
                         let short: Vec<usize> = g.script.decisions[opts[i].1]
                             .costs
                             .iter()
@@ -834,6 +972,7 @@ impl<'g> World<'g> {
                     }
                     Some(_) => {
                         self.saving[f] = 0;
+                        self.goal[f] = None;
                         self.choose(def.choice, &opts, &|o| o.3)
                     }
                 };
@@ -889,10 +1028,10 @@ impl<'g> World<'g> {
         let c = &g.control;
         let vmax = g.rules.maps[g.violence_map].max;
         let mut contested = 0;
-        let mut losses = vec![0.0; self.gangs.len()];
+        let mut losses = vec![0.0; self.holders.len()];
         for p in 0..self.city.len() {
             let (mut total, mut top, mut active) = (0.0, 0.0f64, 0);
-            for &h in &self.gangs {
+            for &h in &self.holders {
                 let v = self.presence[h][p];
                 if v > c.contest {
                     total += v;
@@ -900,17 +1039,25 @@ impl<'g> World<'g> {
                     active += 1;
                 }
             }
-            if active >= 2 {
+            if active >= 2 && (self.at_war || self.clash_here(p)) {
                 contested += 1;
-                for (i, &h) in self.gangs.iter().enumerate() {
+                for (i, &h) in self.holders.iter().enumerate() {
                     let v = self.presence[h][p];
-                    losses[i] = if v > c.contest {
+                    losses[i] = if v <= c.contest {
+                        0.0
+                    } else if self.at_war {
                         c.attrition * (total - v)
                     } else {
-                        0.0
+                        c.attrition
+                            * self
+                                .holders
+                                .iter()
+                                .filter(|&&o| self.hostile(h, o) && self.presence[o][p] > c.contest)
+                                .map(|&o| self.presence[o][p])
+                                .sum::<f64>()
                     };
                 }
-                for (i, &h) in self.gangs.iter().enumerate() {
+                for (i, &h) in self.holders.iter().enumerate() {
                     self.presence[h][p] = (self.presence[h][p] - losses[i]).max(0.0);
                 }
                 let v = c.violence * (total - top);
@@ -921,7 +1068,7 @@ impl<'g> World<'g> {
             }
             let police = g.police_map.map_or(0.0, |m| self.gb.maps[m][p]);
             let keep = (1.0 - c.decay) * (1.0 - c.police_attrition * police / 100.0).max(0.0);
-            for &h in &self.gangs {
+            for &h in &self.holders {
                 self.presence[h][p] *= keep;
             }
         }
@@ -942,7 +1089,7 @@ impl<'g> World<'g> {
         let c = &g.control;
         for p in 0..self.city.len() {
             let (mut top, mut tv, mut second) = (None, 0.0, 0.0);
-            for &h in &self.gangs {
+            for &h in &self.holders {
                 let v = self.presence[h][p];
                 if v > tv {
                     second = tv;
@@ -996,16 +1143,20 @@ impl<'g> World<'g> {
         for o in self.owner.iter().flatten() {
             self.factions[*o].territory += 1;
         }
-        for &h in &self.gangs {
+        for &h in &self.holders {
+            let armed = self.troops.iter().any(|t| t.faction == h);
+            let kind = g.factions[h].kind;
             let f = &mut self.factions[h];
-            f.alive = f.territory > 0 || self.presence[h].iter().sum::<f64>() > 1.0;
+            f.alive = f.territory > 0
+                || armed
+                || (kind == Kind::Gang && self.presence[h].iter().sum::<f64>() > 1.0);
         }
     }
 
     // ---------- metrics ----------
 
     pub fn gangs_alive(&self) -> usize {
-        self.gangs
+        self.holders
             .iter()
             .filter(|&&h| self.factions[h].alive)
             .count()
@@ -1013,11 +1164,15 @@ impl<'g> World<'g> {
 
     /// Herfindahl index of the gangs' territory (1: one gang holds everything held).
     pub fn hhi(&self) -> f64 {
-        let total: usize = self.gangs.iter().map(|&h| self.factions[h].territory).sum();
+        let total: usize = self
+            .holders
+            .iter()
+            .map(|&h| self.factions[h].territory)
+            .sum();
         if total == 0 {
             return 0.0;
         }
-        self.gangs
+        self.holders
             .iter()
             .map(|&h| (self.factions[h].territory as f64 / total as f64).powi(2))
             .sum()
@@ -1025,7 +1180,7 @@ impl<'g> World<'g> {
 
     /// Share of the city held by the largest gang.
     pub fn top_share(&self) -> f64 {
-        self.gangs
+        self.holders
             .iter()
             .map(|&h| self.factions[h].territory)
             .max()
@@ -1059,9 +1214,12 @@ impl<'g> World<'g> {
         .iter()
         .map(|s| s.to_string())
         .collect();
+        if !g.war.troops.is_empty() {
+            c.extend(["battles", "losses", "troops"].map(String::from));
+        }
         c.extend(g.rules.maps.iter().map(|m| m.id.clone()));
         c.extend(g.rules.metrics.iter().map(|m| format!("m.{m}")));
-        for &h in &self.gangs {
+        for &h in &self.holders {
             c.push(format!("territory.{}", g.factions[h].id));
         }
         for (f, def) in g.factions.iter().enumerate() {
@@ -1087,7 +1245,7 @@ impl<'g> World<'g> {
                 let b = &rules.unit_rules[ri].body;
                 b.inputs.iter().chain(&b.outputs).any(|x| x.resource == r)
             })
-        }) || self.game.factions[f].kind == Kind::Gang
+        }) || self.game.factions[f].kind.holds()
             && rules
                 .unit_rules
                 .iter()
@@ -1150,6 +1308,7 @@ impl<'g> World<'g> {
                 })
                 .collect(),
             territory: self.factions.iter().map(|f| f.territory).collect(),
+            troops: self.troop_positions(),
         }
     }
 
@@ -1167,12 +1326,19 @@ impl<'g> World<'g> {
             self.top_share(),
             self.held(),
         ];
+        if !g.war.troops.is_empty() {
+            r.extend([
+                self.period.battles,
+                self.period.losses,
+                self.troops.len() as f64,
+            ]);
+        }
         r.extend((0..g.rules.maps.len()).map(|m| self.map_mean(m)));
         let mut metrics = self.period.metrics.clone();
         metrics.resize(g.rules.metrics.len(), 0.0);
         r.extend(metrics);
         r.extend(
-            self.gangs
+            self.holders
                 .iter()
                 .map(|&h| self.factions[h].territory as f64),
         );
@@ -1214,6 +1380,19 @@ impl<'g> World<'g> {
         );
         s.insert("contested_share".into(), self.means[0] / days / places);
         s.insert("captures_share".into(), self.total.captures / places);
+        if !g.war.troops.is_empty() {
+            s.insert("battles".into(), self.total.battles);
+            s.insert("losses".into(), self.total.losses);
+            s.insert("raised".into(), self.total.raised);
+            s.insert("destroyed".into(), self.total.destroyed);
+            s.insert("troops".into(), self.troops.len() as f64);
+            for &h in &self.holders {
+                s.insert(
+                    format!("territory.{}", g.factions[h].id),
+                    self.factions[h].territory as f64,
+                );
+            }
+        }
         for (m, def) in g.rules.maps.iter().enumerate() {
             s.insert(format!("map.{}", def.id), self.means[2 + m] / days);
         }

@@ -1,0 +1,88 @@
+# The medieval era: levies, archers, men-at-arms and knights. Distances in km, speeds in km a day.
+
+[war]
+distance = "km"
+damage_scale = 0.35        # a day of battle deals a third of the table
+defense_per_star = 10
+home_defense = 1
+fort_map = "Fort"
+luck = 10
+heal = 3
+unpaid = 4
+violence = 0.2
+relation = "war"
+
+[[terrain]]
+id = "mountains"
+field = "elevation"
+above = 0.67
+defense = 3
+move_cost = { foot = 3 }          # horses cannot cross
+color = "#8d8173"
+
+[[terrain]]
+id = "hills"
+field = "elevation"
+above = 0.59
+defense = 2
+move_cost = { foot = 1.6, horse = 2 }
+color = "#b5a77f"
+
+[[terrain]]
+id = "forest"
+field = "forest"
+above = 0.58
+defense = 2
+move_cost = { foot = 1.5, horse = 2.5 }
+color = "#5d8a52"
+
+[[terrain]]
+id = "plains"
+defense = 0
+move_cost = { foot = 1, horse = 1 }
+color = "#c9d8a0"
+
+[[troop]]
+id = "light"
+name = "Levy"
+icon = "L"
+speed = 25
+cost = { Funds = 15, Recruits = 10 }
+upkeep = { Funds = 0.12 }
+damage = { light = 45, ranged = 55, heavy = 15, fast = 10 }
+occupy = 3
+description = "Cheap farmers with spears: they hold ground, and little else."
+
+[[troop]]
+id = "ranged"
+name = "Archers"
+icon = "A"
+speed = 25
+cost = { Funds = 30, Recruits = 8 }
+upkeep = { Funds = 0.25 }
+damage = { light = 60, ranged = 45, heavy = 30, fast = 50 }
+occupy = 1
+description = "Shoot down levies and horses; weak in a siege."
+
+[[troop]]
+id = "heavy"
+name = "Men-at-arms"
+icon = "M"
+speed = 20
+cost = { Funds = 45, Recruits = 10 }
+upkeep = { Funds = 0.4 }
+damage = { light = 75, ranged = 70, heavy = 50, fast = 45 }
+occupy = 4
+description = "Armoured foot: slow, strong, the best at taking a place."
+
+[[troop]]
+id = "fast"
+name = "Knights"
+move = "horse"
+icon = "K"
+speed = 45
+cost = { Funds = 70, Recruits = 5 }
+upkeep = { Funds = 0.6 }
+damage = { light = 85, ranged = 80, heavy = 55, fast = 50 }
+occupy = 2
+description = "Fast and deadly on open ground; no use in the mountains."

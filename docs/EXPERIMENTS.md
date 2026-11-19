@@ -150,6 +150,36 @@ districts does nothing: in Bologna the gangs start and fight in the poorer secti
 the hill and the centre. With small sections and one section per move, gangs hold only a
 quarter of the city after two years.
 
+## Marches' experiment
+
+### Alliances and eras (`experiments/marches.toml`)
+
+Five realms, about 230 provinces, three years, 16 seeds. In "alliance" the first two realms
+(Aldmark and Brennholt) start allied; "future" swaps the medieval troops and terrain for the
+future era's (`era = "future"`), with the same land and decisions.
+
+| | medieval | alliance | future | future, alliance |
+|---|---:|---:|---:|---:|
+| `territory.realm1` | 34.5 ± 64.1 | 74.4 ± 53.4 | 23.2 ± 51.6 | 86.1 ± 57.7 |
+| `territory.realm2` | 44.5 ± 63.9 | 102.0 ± 40.6 | 61.0 ± 88.4 | 99.2 ± 61.1 |
+| `territory.realm3` | 54.8 ± 75.0 | 35.3 ± 67.2 | 62.4 ± 88.4 | 13.8 ± 55.2 |
+| `gangs_alive` (realms left) | 3.50 | 2.50 | 3.12 | 2.19 |
+| `battles` | 1142 ± 258 | 682 ± 405 | 744 ± 303 | 339 ± 238 |
+| `destroyed` | 296 ± 67 | 174 ± 109 | 227 ± 87 | 106 ± 70 |
+| `top_share` | 0.67 | 0.58 | 0.81 | 0.72 |
+| `m.Truces` | 14.2 | 6.9 | 3.8 | 1.3 |
+
+* The alliance pays: the two allies end with 176 provinces between them instead of 79 (185
+  instead of 84 in the future era), most of a land of about 230. They never fight each other
+  and their troops cross each other's land, so they face one front fewer each.
+* With an alliance there are fewer battles, not more: the allies win sooner, and a smaller,
+  settled map has fewer fronts.
+* The future era is more decisive (the largest realm ends with 81% of the land, against 67%)
+  and makes almost no peace: drones and hovertanks reach a capital in days, so a realm under
+  threat is lost before it can afford a truce.
+* The spread is wide (the standard deviations are as large as the means): which realm wins
+  depends on where the capitals fall and who meets whom first, as in the genre.
+
 ## Ideas for more
 
 * **Poverty and recruitment**: make aggression grow with crew and see whether the shock result
@@ -157,5 +187,7 @@ quarter of the city after two years.
 * **Unequal gangs**: one rich gang in the centre, five poor ones on the edges.
 * **Calibration**: compare Bologna's simulated hotspots with recorded data (the Extended
   GlassBox validation loop).
+* **Terrain and defence**: the same war with `defense_per_star = 0`, or without the river's
+  bridges, to see how much of the outcome the land decides.
 * **Police tactics over time**: switch strategy on a given day with an event, and look at the
   time series (`series/*/seed-N.csv`) around it.

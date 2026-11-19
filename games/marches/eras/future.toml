@@ -1,0 +1,92 @@
+# The future era: militia, drone wings, battle mechs and hovertanks, on the same land and with
+# the same decisions as the medieval one. Distances in km, speeds in km a day.
+
+[war]
+distance = "km"
+damage_scale = 0.45
+defense_per_star = 8
+home_defense = 1
+fort_map = "Fort"          # bunkers
+luck = 6
+heal = 6
+unpaid = 6
+violence = 0.3
+relation = "war"
+
+[[terrain]]
+id = "mountains"
+field = "elevation"
+above = 0.67
+defense = 3
+move_cost = { boots = 2.5, hover = 1.5 }   # tracks cannot climb
+color = "#7b7f8a"
+
+[[terrain]]
+id = "hills"
+field = "elevation"
+above = 0.59
+defense = 2
+move_cost = { boots = 1.5, tracks = 2, hover = 1.2 }
+color = "#a5a58c"
+
+[[terrain]]
+id = "forest"
+field = "forest"
+above = 0.58
+defense = 1
+move_cost = { boots = 1.3, tracks = 2, hover = 1 }
+color = "#4f7a5a"
+
+[[terrain]]
+id = "plains"
+defense = 0
+move_cost = { boots = 1, tracks = 1, hover = 1 }
+color = "#bccbb0"
+
+[[troop]]
+id = "light"
+name = "Militia"
+move = "boots"
+icon = "I"
+speed = 40
+cost = { Funds = 15, Recruits = 10 }
+upkeep = { Funds = 0.12 }
+damage = { light = 50, ranged = 15, heavy = 10, fast = 12 }
+occupy = 3
+description = "Cheap and everywhere: they hold ground."
+
+[[troop]]
+id = "ranged"
+name = "Drone wing"
+move = "hover"
+icon = "D"
+speed = 150
+cost = { Funds = 35, Recruits = 3 }
+upkeep = { Funds = 0.35 }
+damage = { light = 65, ranged = 40, heavy = 55, fast = 60 }
+occupy = 0
+description = "Strikes anywhere fast, but cannot hold a place."
+
+[[troop]]
+id = "heavy"
+name = "Battle mech"
+move = "tracks"
+icon = "M"
+speed = 45
+cost = { Funds = 55, Recruits = 6 }
+upkeep = { Funds = 0.5 }
+damage = { light = 80, ranged = 35, heavy = 55, fast = 60 }
+occupy = 4
+description = "Armour that takes places; stuck below the mountains."
+
+[[troop]]
+id = "fast"
+name = "Hovertank"
+move = "hover"
+icon = "H"
+speed = 110
+cost = { Funds = 75, Recruits = 4 }
+upkeep = { Funds = 0.7 }
+damage = { light = 70, ranged = 30, heavy = 65, fast = 50 }
+occupy = 2
+description = "Fast over any ground, mountains too; weak against drones."

@@ -1,0 +1,33 @@
+# Marches' numbers. Each one can be changed with `--set name=value` or in an experiment, and is
+# used as $name in game.toml, the era files and the scripts.
+
+# The land
+era = "medieval"          # which troops and terrain: eras/medieval.toml or eras/future.toml
+provinces = 240           # about how many provinces
+radius_km = 250
+map_seed = -1             # -1: a new land for every seed; a number: the same land every time
+bridges = 4               # where troops can cross the river
+map_file = ""             # a real map instead: a GeoJSON or a MapLibre style
+basemap = ""              # under the map viewer ("": automatic)
+
+# Realms
+realms = 5
+teams = ""                # e.g. "north,north" makes the first two realms allies
+start_funds = 120
+start_recruits = 40
+start_presence = 50       # presence at the capital (60% two provinces around it)
+realm_actions = 2         # decisions per day
+max_army = 14             # no more troops than this
+
+# Economy, per province held, per day
+tax = 0.12
+rich_tax = 0.12           # more where wealth is above 50
+recruits = 0.08
+
+# What decisions cost and do
+settle_cost = 12
+govern_cost = 4
+fort_cost = 40
+peace_cost = 60           # tribute paid to make peace
+alliance_cost = 40
+presence_decay = 0.002

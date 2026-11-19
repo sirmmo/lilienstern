@@ -50,13 +50,35 @@ pub fn to_geojson(w: &World) -> Value {
             props.insert(def.id.clone(), json!(round(w.gb.maps[m][p], 100.0)));
         }
         let mut presence = Map::new();
-        for &h in &w.gangs {
+        for &h in &w.holders {
             let v = w.presence[h][p];
             if v > 0.5 {
                 presence.insert(g.factions[h].id.clone(), json!(round(v, 10.0)));
             }
         }
         props.insert("presence".into(), Value::Object(presence));
+        let ll = w.city.lonlat(place.centre);
+        props.insert(
+            "centre".into(),
+            json!([round(ll[0], 1e5), round(ll[1], 1e5)]),
+        );
+        if let Some(t) = w.terrain[p] {
+            props.insert("terrain".into(), json!(g.war.terrains[t].id));
+        }
+        let troops: Vec<Value> = w
+            .troops
+            .iter()
+            .filter(|t| t.place == p)
+            .map(|t| {
+                json!(format!(
+                    "{} ({}, {:.0}%)",
+                    g.war.troops[t.kind].id, g.factions[t.faction].id, t.hp
+                ))
+            })
+            .collect();
+        if !troops.is_empty() {
+            props.insert("troops".into(), Value::Array(troops));
+        }
         let units: Vec<Value> = w.units_at[p]
             .iter()
             .map(|&u| {

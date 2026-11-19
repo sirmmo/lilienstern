@@ -1,0 +1,28 @@
+name = "Alliances and eras"
+question = "Does an alliance pay off for the two realms that make it? And does the era change the war?"
+description = """
+Marches, five realms on a land of about 240 provinces, for three years. In "alliance" the first
+two realms (Aldmark and Brennholt) start allied: they share provinces, never fight, and do not
+take each other's land. "future" is the same war with the future era's troops and terrain
+(faster, harder-hitting, drones that cannot hold ground).
+"""
+game = "../games/marches"
+days = 1095
+seeds = 16
+report = ["territory.realm1", "territory.realm2", "territory.realm3", "gangs_alive", "battles", "destroyed", "raised", "top_share", "m.Truces", "m.Wars"]
+geojson = true
+
+[[variant]]
+name = "medieval"
+
+[[variant]]
+name = "alliance"
+set = { teams = "a,a" }
+
+[[variant]]
+name = "future"
+set = { era = "future" }
+
+[[variant]]
+name = "future, alliance"
+set = { era = "future", teams = "a,a" }

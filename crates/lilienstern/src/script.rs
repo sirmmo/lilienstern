@@ -33,9 +33,13 @@
 
 use glassbox::{number, Block, Cmp, Error, Line, Rules, Scope};
 
+use crate::war::{Relation, War};
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Kind {
     Gang,
+    /// Holds territory like a gang: a kingdom, a corporation, a colony.
+    Realm,
     Police,
     Other,
 }
@@ -44,10 +48,16 @@ impl Kind {
     pub fn parse(word: &str) -> Option<Kind> {
         Some(match word {
             "gang" => Kind::Gang,
+            "realm" => Kind::Realm,
             "police" => Kind::Police,
             "other" => Kind::Other,
             _ => return None,
         })
+    }
+
+    /// Whether factions of this kind hold places by presence.
+    pub fn holds(self) -> bool {
+        matches!(self, Kind::Gang | Kind::Realm)
     }
 }
 
@@ -132,6 +142,47 @@ pub enum Cond {
         value: f64,
     },
     Chance(f64),
+    /// A troop-based count: see [`Count`].
+    Count {
+        what: Count,
+        cmp: Cmp,
+        value: f64,
+    },
+    /// The faction's relation with the place's owner (false when nobody holds it, or the
+    /// faction does).
+    Relation(Relation),
+}
+
+/// Numbers about troops, for conditions and weights. Strengths count a full troop as 1.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Count {
+    /// The faction's troops at the place.
+    Troops,
+    /// Enemy troops (at war with the faction) at the place.
+    Foes,
+    /// Enemy troops at the place and next to it.
+    Threat,
+    /// How many troops the faction has.
+    Army,
+    /// How many of them have no orders.
+    Idle,
+}
+
+impl Count {
+    fn parse(w: &str) -> Option<Count> {
+        Some(match w {
+            "troops" => Count::Troops,
+            "foes" => Count::Foes,
+            "threat" => Count::Threat,
+            "army" => Count::Army,
+            "idle" => Count::Idle,
+            _ => return None,
+        })
+    }
+
+    fn needs_place(self) -> bool {
+        matches!(self, Count::Troops | Count::Foes | Count::Threat)
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -184,6 +235,18 @@ pub enum Effect {
         metric: usize,
         value: f64,
     },
+    /// A new troop of the faction at the place (in a decision, its cost is added to the
+    /// decision's).
+    Raise {
+        troop: usize,
+    },
+    /// Sends up to `count` (0: all) of the faction's troops without orders to the place, the
+    /// closest first.
+    March {
+        count: u32,
+    },
+    /// Sets the relation between the faction and the place's owner.
+    SetRelation(Relation),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -197,6 +260,7 @@ pub enum Term {
     Unowned,
     /// Units at the place.
     Units(Option<usize>),
+    Count(Count),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -384,11 +448,30 @@ fn cond(rules: &mut Rules, c: &Ctx, i: usize) -> Result<Cond, Error> {
             value: c.num(i + 2)?,
         },
         "chance" => Cond::Chance(c.num(i + 1)?.clamp(0.0, 1.0)),
-        w => return Err(c.err(format!("unknown condition {w:?}"))),
+        "relation" => Cond::Relation(relation(c, i + 1)?),
+        w => match Count::parse(w) {
+            Some(what) => Cond::Count {
+                what,
+                cmp: c.cmp(i + 1)?,
+                value: c.num(i + 2)?,
+            },
+            None => return Err(c.err(format!("unknown condition {w:?}"))),
+        },
     })
 }
 
-fn effect(rules: &mut Rules, script: &Script, c: &Ctx, i: usize) -> Result<Effect, Error> {
+fn relation(c: &Ctx, i: usize) -> Result<Relation, Error> {
+    let w = c.word(i)?;
+    Relation::parse(w).ok_or_else(|| c.err(format!("expected war, peace or ally, found {w:?}")))
+}
+
+fn effect(
+    rules: &mut Rules,
+    script: &Script,
+    war: &War,
+    c: &Ctx,
+    i: usize,
+) -> Result<Effect, Error> {
     let i = skip_target(c, i);
     Ok(match c.word(i)? {
         "map" => {
@@ -453,6 +536,22 @@ fn effect(rules: &mut Rules, script: &Script, c: &Ctx, i: usize) -> Result<Effec
                 1.0
             },
         },
+        "raise" => {
+            let id = c.word(i + 1)?;
+            Effect::Raise {
+                troop: war
+                    .troop(id)
+                    .ok_or_else(|| c.err(format!("there is no troop {id:?}")))?,
+            }
+        }
+        "march" => Effect::March {
+            count: match c.line.words.get(i + 1).map(String::as_str) {
+                None => 1,
+                Some("all") => 0,
+                Some(_) => c.num(i + 1)?.max(1.0) as u32,
+            },
+        },
+        "relation" => Effect::SetRelation(relation(c, i + 1)?),
         w => return Err(c.err(format!("unknown effect {w:?}"))),
     })
 }
@@ -482,7 +581,10 @@ fn weight(rules: &mut Rules, c: &Ctx) -> Result<Weight, Error> {
             ),
             None => (Term::Units(None), c.num(i + 1)?),
         },
-        t => return Err(c.err(format!("unknown weight {t:?}"))),
+        t => match Count::parse(t) {
+            Some(what) => (Term::Count(what), c.num(i + 1)?),
+            None => return Err(c.err(format!("unknown weight {t:?}"))),
+        },
     };
     Ok(Weight { term, k })
 }
@@ -492,9 +594,11 @@ fn who(c: &Ctx) -> Result<Option<Kind>, Error> {
     if w == "any" {
         return Ok(None);
     }
-    Kind::parse(w)
-        .map(Some)
-        .ok_or_else(|| c.err(format!("expected gang, police, other or any, found {w:?}")))
+    Kind::parse(w).map(Some).ok_or_else(|| {
+        c.err(format!(
+            "expected gang, realm, police, other or any, found {w:?}"
+        ))
+    })
 }
 
 fn every(c: &Ctx) -> Result<u32, Error> {
@@ -510,6 +614,7 @@ fn every(c: &Ctx) -> Result<u32, Error> {
 pub fn compile(
     script: &mut Script,
     rules: &mut Rules,
+    war: &War,
     file: &str,
     blocks: &[Block],
 ) -> Result<(), Error> {
@@ -543,7 +648,7 @@ pub fn compile(
                     m.output = op.apply(m.output, v);
                 }
                 "daily" | "do" => {
-                    let e = effect(rules, script, &c, 1)?;
+                    let e = effect(rules, script, war, &c, 1)?;
                     script.modifiers[mi].daily.push(e);
                 }
                 w => return Err(c.err(format!("modifier {}: unknown statement {w:?}", b.name))),
@@ -566,8 +671,14 @@ pub fn compile(
             match l.words[0].as_str() {
                 "if" => conds.push(cond(rules, &c, 1)?),
                 "chance" => conds.push(Cond::Chance(c.num(1)?.clamp(0.0, 1.0))),
-                "do" => effects.push(effect(rules, script, &c, 1)?),
-                "log" => effects.push(effect(rules, script, &c, 0)?),
+                "do" => {
+                    let e = effect(rules, script, war, &c, 1)?;
+                    if let (true, Effect::Raise { troop }) = (decision, &e) {
+                        costs.extend(war.troops[*troop].cost.iter().copied());
+                    }
+                    effects.push(e);
+                }
+                "log" => effects.push(effect(rules, script, war, &c, 0)?),
                 "every" => every_n = every(&c)?,
                 "for" => kind_of = who(&c)?,
                 "label" if decision => label = l.words[1..].join(" "),
@@ -612,7 +723,8 @@ pub fn compile(
                         | Cond::Rival { .. }
                         | Cond::Owner(_)
                         | Cond::Units { .. }
-                )
+                        | Cond::Relation(_)
+                ) || matches!(c, Cond::Count { what, .. } if what.needs_place())
             });
             let place_effect = effects.iter().any(|e| {
                 matches!(
@@ -625,6 +737,9 @@ pub fn compile(
                         | Effect::Build { .. }
                         | Effect::Seize
                         | Effect::Destroy { .. }
+                        | Effect::Raise { .. }
+                        | Effect::March { .. }
+                        | Effect::SetRelation(_)
                 )
             });
             if place_cond || place_effect {
@@ -673,7 +788,7 @@ mod tests {
         rules.declare_unit("corner", "Corner");
         let (_, rest) = glassbox::compile(&mut rules, "t.lil", text, &KINDS)?;
         let mut s = Script::default();
-        compile(&mut s, &mut rules, "t.lil", &rest)?;
+        compile(&mut s, &mut rules, &War::default(), "t.lil", &rest)?;
         Ok((s, rules))
     }
 

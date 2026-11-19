@@ -21,7 +21,10 @@
 | **Map** | A value per place; decays and spreads to neighbours | Wealth, Heat, Police, Violence |
 | **Resource** | `local` (held by a unit), `global` (held by an account), `agent` (carried along the map) | Crew, Cash, Product |
 | **Unit** | Something in a place that runs GlassBox rules | safehouse, corner, racket, lab |
-| **Faction** | An actor with an account, an AI and a kind (`gang`, `police`, `other`) | 6 gangs, the police |
+| **Faction** | An actor with an account, an AI and a kind (`gang`, `realm`, `police`, `other`) | 6 gangs, the police |
+| **Relation** | War, peace or alliance between two factions | (Marches) realms make war and peace |
+| **Troop** | Something a faction owns that stands in a place, marches and fights; its kinds are data | (Marches) levies, knights; or militia, hovertanks |
+| **Terrain** | What a place is to troops: defence, and what it costs to enter by each movement type | (Marches) plains, forest, hills, mountains |
 | **Presence** | How strongly a faction is in a place; sets who holds it | gang strength in a block |
 | **Event** | Something that happens to a place, a faction or the world when its conditions hold | an economic shock, arrests |
 | **Decision** | Something a faction can do to a target; the AI weighs and takes them | expand, attack, patrol, raid |
@@ -36,12 +39,14 @@
    place, maps decay and diffuse.
 3. Factions get their **income**.
 4. **Events** fire where their conditions hold.
-5. Each faction's **AI** takes up to `actions` decisions.
-6. **Control**: gangs with presence above `contest` in the same place clash (each loses
+5. Each faction's **AI** takes up to `actions` decisions (which may raise troops and give
+   them orders).
+6. **Troops** march, fight where enemies meet, occupy places, are paid and heal.
+7. **Control**: gangs with presence above `contest` in the same place clash (each loses
    `attrition` times the others' presence, the place gets violence); presence decays, faster
    where the police is; places change hands when a gang has `hold` presence and `margin` times
    the next one's; a gang that loses a place loses its units there (seized or destroyed).
-7. **Metrics** are recorded.
+8. **Metrics** are recorded.
 
 Control is the one built-in mechanic tied to a genre (territory held by presence). Its numbers
 are in `[control]`, and a game that does not use presence simply has no gangs.
@@ -67,6 +72,36 @@ Two lessons from tuning Gangland shaped this:
 And one lesson for writing weights: a weight on an unbounded quantity (a weight on cash, say)
 eventually outweighs everything else. Gate such decisions with conditions instead (`if global
 Crew less 12`).
+
+## Troops
+
+Troops come from the tactics genre: unit kinds with a movement type, a speed, a cost and a
+damage table against every other kind (in percent of a full unit), terrain with defence stars
+and a movement cost per movement type, and defence that weakens with the defender's health.
+All of it is data (`[[troop]]`, `[[terrain]]`, `[war]`), so the same engine plays levies and
+knights or militia and hovertanks; Marches ships both eras with the same troop ids, so its
+scripts work with either.
+
+What changes on a strategy map is time. Turn-based tactics moves one unit at a time; here every
+troop moves on the shared daily clock, and two rules keep that fair and deterministic:
+
+* **Simultaneous movement.** Troops advance one border at a time, all together, until each has
+  spent its speed for the day; one that walks into enemies stops. Routes are cheapest paths
+  (Dijkstra) over the terrain's costs, computed backwards from the destination, so one search
+  serves every troop sent there.
+* **Simultaneous battle.** In each place, every troop picks the enemy it hurts most and every
+  hit is computed from the state before any is dealt. The order troops are stored in changes
+  nothing.
+
+Troops hold land through **presence**, the same quantity gangs fight over: a troop alone in a
+place adds to its faction's presence and wears down its enemies', and control decides the
+holder. So troops and decisions (settling, governing, attacking) are two ways to the same
+end, and a game can use either or both. **Relations** decide who fights: allies share places
+and never fight or take each other's land, factions at peace stay out of each other's places.
+
+One lesson from tuning Marches: with the default saving rule a faction always ends up buying
+its cheapest troop, because a cheap pick in between ends the saving for a dear one. Factions
+can now save for a goal (`saving = "goal"`).
 
 ## GlassBox on a graph
 
@@ -136,15 +171,19 @@ in the browser.
 
 ## Performance
 
-Gangland, 900 neighbourhoods, 6 gangs, 730 days: about 1.4 s on one core. Experiments run their
-runs on all cores; the five shipped experiments (about 200 runs) take under 30 s on 40 cores.
+Gangland, 900 neighbourhoods, 6 gangs, 730 days: about 1.4 s on one core. Marches, about 230
+provinces, 5 realms and some 40 troops at a time, 1095 days: about 0.7 s. Experiments run their
+runs on all cores: the 64 runs of the Marches experiment take about 2 s on 40 cores.
 
 ## Next
 
 * **Saves** with stable ids (units, maps, resources by id, not position), so saves survive
   changes to the rules.
 * **Events with choices**: options for a player, picked by weight for the AI.
-* **Diplomacy**: relations between factions, truces and alliances as decisions and modifiers.
+* **Diplomacy beyond war, peace and alliance**: offers the other side can refuse, vassals,
+  relations that drift.
+* **Troops**: supply lines, sieges with stages, transports (troops carrying troops), fog of war,
+  retreat, generals.
 * **More for players**: events that ask the player, a history of what happened to them, and
   saving a game in the browser.
 * **Mods**: folders of TOML and scripts laid over a game.

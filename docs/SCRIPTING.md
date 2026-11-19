@@ -10,6 +10,19 @@ games/gangland/
 └── politics.lil    events, decisions, modifiers
 ```
 
+A game with troops (`games/marches`) also has its troops and terrain in files that `game.toml`
+includes, one per era:
+
+```text
+games/marches/
+├── params.toml     era = "medieval"
+├── game.toml       include = ["eras/$era.toml"]
+├── realms.lil
+└── eras/
+    ├── medieval.toml   [war], [[terrain]], [[troop]]: levies, archers, men-at-arms, knights
+    └── future.toml     the same ids: militia, drone wings, battle mechs, hovertanks
+```
+
 Script files may hold any mix of GlassBox and Lilienstern blocks; the extension is only a hint.
 `lilienstern check <folder>` loads a game and lists what it declares; errors give the file and
 line.
@@ -36,7 +49,12 @@ description = "..."
 scripts = ["economy.gbx", "politics.lil"]
 days = 730               # default length of a run
 sample_every = 10        # days between rows of the time series
+include = ["eras/$era.toml"]   # more of game.toml, merged in
 ```
+
+An included file is read like `game.toml` (parameters work in it and in its name). Its lists of
+tables (`[[troop]]`, `[[map]]`, ...) are added to the game's, its tables merged; a value set in
+both is an error.
 
 ### [city]
 
@@ -56,9 +74,10 @@ sample_every = 10        # days between rows of the time series
 | `basemap` | | what map viewers draw underneath: "none", "osm", a MapLibre style URL or file. Default: the imported style, else "osm" for imported places and "none" for a generated city |
 
 Generated places have the fields `x`, `y` (-1 to 1), `centrality`, `wealth` (0 to 100),
-`density` (people per km²), `population` and `area_km2`. Imported places have `x`, `y`,
+`density` (people per km²), `population`, `area_km2`, and `elevation` and `forest` (0 to 1,
+smooth over the map, for terrain). Imported places have `x`, `y`,
 `centrality`, `area_km2` and their numeric properties (lowercased); `density` is derived from
-`population` if missing. Imported polygons that share at least two vertices are neighbours. In a MapLibre style, GeoJSON
+`population` if missing, and with `synthesize` they get `elevation` and `forest` too. Imported polygons that share at least two vertices are neighbours. In a MapLibre style, GeoJSON
 sources given as file names are read relative to the style; the places' source must be a file
 or inline (download a source that is on the web).
 
@@ -100,7 +119,7 @@ name = "Street corner"
 ```toml
 [[faction]]
 id = "gang"
-kind = "gang"                 # gang, police or other
+kind = "gang"                 # gang, realm, police or other
 count = 6                     # gang1 ... gang6
 name = "Gang"
 names = ["Vipers", "Saints"]  # names of the copies, in order
@@ -117,10 +136,22 @@ actions = 3                   # decisions per day
 choice = "weighted"           # weighted or best
 noise = 0.25                  # randomness of target scores (score x 1 ± noise)
 patience = 20                 # decisions it saves for an unaffordable one
+saving = "short"              # or "goal": see below
+team = "north"                # factions of the same team start allied; with count > 1, a
+                              # list or a comma-separated string, one per copy ("a,a,,")
+start_troops = ["light", "heavy"]   # troops at the headquarters
 ```
 
-A faction with `start_presence` or `start_units` gets a headquarters. Only `gang` factions
-hold places; `police` and `other` act through decisions.
+A faction with `start_presence`, `start_units` or `start_troops` gets a headquarters. `gang`
+and `realm` factions hold places (they are the same to the engine; the names are for the
+reader); `police` and `other` act through decisions and troops.
+
+**Saving.** When the decision the AI picks is unaffordable, the faction saves: for up to
+`patience` decisions it takes only decisions that do not spend what it is short of. With
+`saving = "short"` (the default) the next pick decides again what it saves for, so a cheap
+decision picked in between ends the saving and dear ones are rarely bought. With `"goal"` the
+faction keeps saving for what it first picked, which it takes as soon as it can afford it (if
+that decision still has a target). Marches uses `"goal"`, or its realms would raise only levies.
 
 ### [control]
 
@@ -139,6 +170,76 @@ hold places; `police` and `other` act through decisions.
 
 A holder keeps its place while its presence is at least half of `hold`, unless another gang
 has `hold` and `margin` times its presence.
+
+### Troops: [war], [[terrain]], [[troop]]
+
+Troops are things a faction owns that stand in a place, march to others and fight. All of
+them, and the ground they cross, are declared in data:
+
+```toml
+[war]
+distance = "km"         # "steps" (each border costs 1) or "km" (centre to centre)
+damage_scale = 0.35     # share of the damage table dealt per day of battle (default 1)
+defense_per_star = 10   # % of damage removed per defence star, times the defender's health
+home_defense = 1        # stars for troops in places their faction or an ally holds
+fort_map = "Fort"       # a map whose value adds stars, and slows occupation
+luck = 10               # a random 0..luck added to every hit
+heal = 3                # health regained per day in friendly places without enemies
+unpaid = 4              # health lost per day when the faction cannot pay the upkeep
+violence = 0.2          # added to the violence map per point of damage
+relation = "war"        # between factions of different teams at the start: war or peace
+
+[[terrain]]             # a place's terrain is the first that matches it
+id = "hills"
+field = "elevation"     # a field of the place; with no field, matches every place
+above = 0.59            # and/or `below`
+defense = 2             # stars
+move_cost = { foot = 1.6, horse = 2 }   # per movement type; a type missing cannot enter
+color = "#b5a77f"       # for viewers
+
+[[troop]]
+id = "fast"
+name = "Knights"
+move = "horse"          # movement type (default "foot")
+speed = 45              # per day, in [war] distance units
+cost = { Funds = 70, Recruits = 5 }     # global resources, paid by `do raise`
+upkeep = { Funds = 0.6 }                # per day
+damage = { light = 85, ranged = 80, heavy = 55, fast = 50 }   # % of a full troop, by target id
+occupy = 2              # presence a full troop adds per day where there is no enemy troop
+icon = "K"              # a mark for viewers (default: the first letter)
+description = "..."
+```
+
+Places with no matching terrain (and every place, when no terrain is declared) cost 1 to enter
+and give no stars. Troops have health from 0 to 100; strength counts a full troop as 1.
+
+**A day of troops** (after the decisions, before control):
+
+1. *March.* Troops with orders move along their route, all at the same time, a border at a
+   time: entering a place costs its distance (1, or km) times the terrain's cost for the
+   troop's movement type, and a troop spends up to `speed` a day. A troop that enters a place
+   with enemy troops stops there. Routes are the cheapest way, and avoid terrain the troop
+   cannot enter and places held by factions it is at peace with.
+2. *Battle.* Where factions at war have troops in the same place, each troop hits the enemy
+   it does the most damage to: `(damage + luck roll) x damage_scale x health/100 x (1 - cover)`,
+   where cover is `stars x defense_per_star x the target's health/100` percent. Every hit is
+   worked out before any is dealt, so the order of troops does not matter. A troop at 0 is
+   destroyed.
+3. *Occupation.* A troop in a place without enemy troops adds `occupy x health/100` (divided
+   by 1 + the fort map) to its faction's presence there, and takes as much from the presence of
+   every faction at war with it; control then decides who holds the place. Troops do not
+   occupy places held by allies or factions at peace.
+4. *Supply.* Each faction pays its troops' upkeep, or they all lose `unpaid`; troops in
+   friendly places with no enemies heal `heal`.
+
+**Relations.** Every pair of factions is at `war`, at `peace` (no fighting; neither enters the
+other's places) or `ally` (they share places, never fight, never take each other's places).
+Factions of the same `team` start allied, the others as `[war] relation` says; decisions and
+events change relations with `do relation`. Gangs' presence clashes (`[control]`) also happen
+only between factions at war.
+
+A person plays troops with `World::order(faction, troop, place)` (and `World::route` to see
+the way and the days first); the AI moves them with `do march`.
 
 ## GlassBox blocks
 
@@ -247,6 +348,12 @@ always read the target.
 | `rank <cmp> n` | its rank by territory among factions of its kind (1: largest) |
 | `day <cmp> n` | the day, from 0 |
 | `chance p` | with probability p (also a statement of its own) |
+| `troops <cmp> n` | the faction's troops at the place (a full troop counts 1) |
+| `foes <cmp> n` | troops at the place of factions at war with the faction |
+| `threat <cmp> n` | the same, at the place and the places next to it |
+| `army <cmp> n` | how many troops the faction has |
+| `idle <cmp> n` | how many of them have no orders |
+| `relation war\|peace\|ally` | the faction's relation with the place's holder (false if nobody, or the faction itself, holds it) |
 
 `<cmp>` is `atLeast`, `atMost`, `greater`, `less` or `is`.
 
@@ -265,6 +372,9 @@ always read the target.
 | `seize` | other factions' units at the place become the faction's |
 | `destroy rival\|all` | removes units at the place |
 | `log Metric [n]` | adds n (default 1) to a metric |
+| `raise T` | a troop of kind T for the faction at the place; in a decision, the troop's cost is added to the decision's |
+| `march [n\|all]` | sends up to n (default 1) of the faction's troops that have no orders and are not fighting to the place, those that get there soonest first |
+| `relation war\|peace\|ally` | sets the relation between the faction and the place's holder |
 
 ### Weights (`weight ...`)
 
@@ -277,6 +387,7 @@ always read the target.
 | `weight unowned k` | k if nobody holds the target |
 | `weight units [U] k` | k x the units there |
 | `weight global R k` | k x the faction's resource (careful: unbounded quantities end up outweighing everything) |
+| `weight troops\|foes\|threat\|army\|idle k` | k x the count, as in the conditions |
 
 A decision whose score is not positive is not taken.
 
@@ -288,3 +399,7 @@ the mean of every map, every script metric (`m.<name>`), each gang's territory a
 faction's resources. The summary of a run adds totals, daily means (`map.<id>`), the number and
 share of places that were ever hotspots, and how often each decision was taken
 (`decision.<name>`).
+
+Games with troops add `battles` (places where troops fought, per day), `losses` (health lost
+in battle), `troops` (alive) to the series, and `battles`, `losses`, `raised`, `destroyed`,
+`troops` and each holder's `territory.<faction>` to the summary.
