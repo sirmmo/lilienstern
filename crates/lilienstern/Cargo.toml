@@ -5,7 +5,13 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
+homepage.workspace = true
+readme = "README.md"
+keywords = ["grand-strategy", "simulation", "game-engine", "strategy", "glassbox"]
+categories = ["game-engines", "simulation"]
 rust-version.workspace = true
+# The tests play the example games in the repository's games/ folder.
+exclude = ["tests"]
 
 [dependencies]
 glassbox.workspace = true

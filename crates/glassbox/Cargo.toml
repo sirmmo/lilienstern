@@ -5,6 +5,10 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
+homepage.workspace = true
+readme = "README.md"
+keywords = ["glassbox", "simulation", "rules", "city-builder", "digital-twin"]
+categories = ["simulation", "game-engines"]
 rust-version.workspace = true
 
 [dependencies]
