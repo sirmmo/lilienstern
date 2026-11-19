@@ -251,6 +251,7 @@ function drawTroops(animate) {
     let m = markers.get(s.id);
     if (!m) {
       const el = document.createElement('div');
+      el.className = 'troop';
       el.addEventListener('click', (e) => { e.stopPropagation(); clickStack(m.stack); });
       m = { el, marker: new maplibregl.Marker({ element: el }), at: null };
       markers.set(s.id, m);
@@ -259,7 +260,9 @@ function drawTroops(animate) {
     const kinds = s.list.map((t) => t.k);
     const hp = s.list.reduce((a, t) => a + t.hp, 0) / s.list.length;
     const mine = s.f === player;
-    m.el.className = 'troop' + (mine ? ' mine' : '') + (mine && s.list.some((t) => chosen.includes(t.id)) ? ' selected' : '');
+    // Toggle only our classes: MapLibre's own (maplibregl-marker...) position the marker.
+    m.el.classList.toggle('mine', mine);
+    m.el.classList.toggle('selected', mine && s.list.some((t) => chosen.includes(t.id)));
     m.el.style.borderColor = info.factions[s.f].color;
     m.el.style.zIndex = mine ? 2 : 1; // your troops stay clickable where stacks overlap
     m.el.style.backgroundImage = `url(${troopIcon(leadKind(kinds))})`;
@@ -631,6 +634,6 @@ document.addEventListener('keydown', (e) => {
 });
 
 // For tests and the curious.
-window.__marches = { call, get state() { return st; }, get info() { return info; }, choose, clickPlace, step };
+window.__marches = { call, get state() { return st; }, get info() { return info; }, get map() { return map; }, choose, clickPlace, step };
 
 boot();

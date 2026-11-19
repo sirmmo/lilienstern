@@ -66,7 +66,7 @@ h3 { margin: 12px 0 4px; font-size: 12px; text-transform: uppercase; letter-spac
 .troops button { padding: 1px 8px; font-size: 12px; }
 
 /* Troops on the map: the troop's icon in a ring of its realm's colour */
-.troop { position: relative; width: 30px; height: 30px; border-radius: 50%; border: 3px solid #fff; background: #111 center / cover no-repeat;
+.troop { width: 30px; height: 30px; border-radius: 50%; border: 3px solid #fff; background: #111 center / cover no-repeat;
   box-shadow: 0 1px 4px rgba(0, 0, 0, .6); cursor: pointer; }
 .troop.mine { width: 34px; height: 34px; border-width: 4px; box-shadow: 0 0 0 2px #fff, 0 1px 5px rgba(0, 0, 0, .7); }
 .troop.selected { box-shadow: 0 0 0 3px #ffd54a, 0 0 14px 5px rgba(255, 213, 74, .85); }
