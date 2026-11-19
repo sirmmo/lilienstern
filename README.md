@@ -157,6 +157,11 @@ from `LIL_ORIGINS`). A page uses another server with `?server=ws://localhost:808
 `tools/deploy-server.sh`. One server holds thousands of games: a room is a few kilobytes of
 commands, and the server does no simulation.
 
+**Stats**: the server's own address shows how it is doing, for the public one
+[lilienstern.fantasymaps.org](https://lilienstern.fantasymaps.org/): games stored and under way,
+players connected, processor and memory, with the last hour in charts. `/stats.json` has the
+same numbers, `/health` answers `ok`. Only totals are shown, never room codes.
+
 ## Documentation
 
 * [docs/DESIGN.md](docs/DESIGN.md): what the engine is, how a day runs, how GlassBox fits, what

@@ -8,6 +8,7 @@ services:
     environment:
       LIL_DATA: /data
       LIL_ORIGINS: https://ingmmo.com,http://localhost,http://127.0.0.1
+      LIL_VERSION: ${LIL_IMAGE:-lilienstern-server:latest}
     volumes:
       - data:/data
     networks:

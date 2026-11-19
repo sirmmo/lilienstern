@@ -13,9 +13,14 @@
 //! * `LIL_DATA`: where rooms are kept, so that games survive a restart (default `data`; empty:
 //!   in memory only);
 //! * `LIL_ORIGINS`: the pages allowed to connect, comma-separated (default the game's site and
-//!   local addresses; `*` for any).
+//!   local addresses; `*` for any);
+//! * `LIL_VERSION`: what the stats page calls this build (the deploy sets the image's tag).
+//!
+//! Plain HTTP on the same port: `/` is a page of stats (stats.html), `/stats.json` its numbers,
+//! `/health` says ok.
 
 mod room;
+mod stats;
 mod store;
 
 use std::collections::hash_map::RandomState;
@@ -28,6 +33,7 @@ use std::time::{Duration, Instant};
 
 use futures_util::{SinkExt, StreamExt};
 use serde_json::{json, Value};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
 use tokio_tungstenite::tungstenite::handshake::server::{ErrorResponse, Request, Response};
@@ -63,15 +69,49 @@ struct Hub {
     data: Option<PathBuf>,
     random: RandomState,
     counter: u64,
+    monitor: stats::Monitor,
 }
 
 impl Hub {
     fn deliver(&self, out: Out) {
         for (id, msg) in out {
             if let Some(c) = self.conns.get(&id) {
-                let _ = c.tx.send(Message::Text(msg.to_string()));
+                let text = msg.to_string();
+                stats::MESSAGES_OUT.add(1);
+                stats::BYTES_OUT.add(text.len() as u64);
+                let _ = c.tx.send(Message::Text(text));
             }
         }
+    }
+
+    /// The rooms in memory, in totals.
+    fn rooms_report(&self) -> Value {
+        let (mut lobby, mut under_way, mut paused, mut over) = (0, 0, 0, 0);
+        let (mut people, mut seats, mut commands) = (0, 0, 0);
+        let mut by_game: std::collections::BTreeMap<&str, usize> = Default::default();
+        for r in self.rooms.values() {
+            match (r.started, r.over) {
+                (_, true) => over += 1,
+                (true, _) => under_way += 1,
+                _ => lobby += 1,
+            }
+            paused += usize::from(r.paused.is_some());
+            people += r.peers.len();
+            seats += r.seats.len();
+            commands += r.log.len();
+            *by_game.entry(r.game.as_str()).or_default() += 1;
+        }
+        json!({
+            "in_memory": self.rooms.len(), "lobby": lobby, "under_way": under_way,
+            "paused": paused, "over": over, "people": people, "seats": seats,
+            "commands": commands, "by_game": by_game,
+            "connections": self.conns.len(),
+            "max_rooms": MAX_ROOMS,
+        })
+    }
+
+    fn games_under_way(&self) -> usize {
+        self.rooms.values().filter(|r| r.started && !r.over).count()
     }
 
     fn save(&mut self, code: &str) {
@@ -167,6 +207,7 @@ impl Hub {
                     return Err("The server is full: try again later.".into());
                 }
                 conn.created += 1;
+                stats::ROOMS_OPENED.add(1);
                 self.leave(id, now);
                 let code = self.new_code();
                 let mut r = Room::new(
@@ -279,7 +320,7 @@ impl Hub {
                 self.save(&code);
                 self.rooms.remove(&code);
             }
-            let started = self.rooms.values().filter(|r| r.started && !r.over).count();
+            let started = self.games_under_way();
             eprintln!(
                 "{} rooms in memory ({started} games under way), {} connections",
                 self.rooms.len(),
@@ -317,12 +358,86 @@ fn allowed(origin: &str, origins: &[String]) -> bool {
         .any(|a| a == "*" || origin == a || origin.starts_with(&format!("{a}:")))
 }
 
+/// A request's head, peeked at without reading it: (its length, method, path, is it a WebSocket).
+async fn peek_head(stream: &TcpStream) -> Option<(usize, String, String, bool)> {
+    let mut buf = vec![0u8; 8192];
+    for _ in 0..250 {
+        let n = stream.peek(&mut buf).await.ok()?;
+        if n == 0 {
+            return None;
+        }
+        if let Some(end) = buf[..n].windows(4).position(|w| w == b"\r\n\r\n") {
+            let head = String::from_utf8_lossy(&buf[..end]);
+            let mut lines = head.lines();
+            let mut first = lines.next()?.split(' ');
+            let method = first.next()?.to_string();
+            let path = first.next()?.split('?').next()?.to_string();
+            let ws = lines.any(|l| {
+                l.split_once(':').is_some_and(|(k, v)| {
+                    k.trim().eq_ignore_ascii_case("upgrade")
+                        && v.to_ascii_lowercase().contains("websocket")
+                })
+            });
+            return Some((end + 4, method, path, ws));
+        }
+        if n == buf.len() {
+            return None; // a head this long is not for us
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    None
+}
+
+const STATS_PAGE: &str = include_str!("stats.html");
+
+/// Answers a plain HTTP request: the stats page and its numbers.
+async fn http(mut stream: TcpStream, len: usize, method: &str, path: &str, hub: &Mutex<Hub>) {
+    let mut head = vec![0u8; len];
+    if stream.read_exact(&mut head).await.is_err() {
+        return;
+    }
+    let (status, kind, body) = match (method, path) {
+        ("GET" | "HEAD", "/" | "/stats") => {
+            stats::PAGE_VIEWS.add(1);
+            ("200 OK", "text/html; charset=utf-8", STATS_PAGE.to_string())
+        }
+        ("GET" | "HEAD", "/stats.json") => {
+            let h = hub.lock().unwrap();
+            let r = stats::report(&h.monitor, h.rooms_report(), h.data.as_deref());
+            ("200 OK", "application/json", r.to_string())
+        }
+        ("GET" | "HEAD", "/health") => ("200 OK", "text/plain", "ok\n".to_string()),
+        ("GET" | "HEAD", _) => ("404 Not Found", "text/plain", "not here\n".to_string()),
+        _ => ("405 Method Not Allowed", "text/plain", "no\n".to_string()),
+    };
+    let mut reply = format!(
+        "HTTP/1.1 {status}\r\nContent-Type: {kind}\r\nContent-Length: {}\r\n\
+         Cache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\n\
+         Content-Security-Policy: default-src 'self'; script-src 'unsafe-inline'; \
+         style-src 'unsafe-inline'\r\nConnection: close\r\n\r\n",
+        body.len()
+    );
+    if method != "HEAD" {
+        reply.push_str(&body);
+    }
+    let _ = stream.write_all(reply.as_bytes()).await;
+    let _ = stream.shutdown().await;
+}
+
 // The handshake's refusal is tungstenite's own type, large as it is.
 #[allow(clippy::result_large_err)]
 async fn connection(stream: TcpStream, hub: Arc<Mutex<Hub>>, id: u64, origins: Arc<Vec<String>>) {
+    let head = tokio::time::timeout(Duration::from_secs(10), peek_head(&stream)).await;
+    let Ok(Some((len, method, path, ws))) = head else {
+        return;
+    };
+    if !ws {
+        return http(stream, len, &method, &path, &hub).await;
+    }
     let check = |req: &Request, resp: Response| -> Result<Response, ErrorResponse> {
         match req.headers().get("origin").and_then(|o| o.to_str().ok()) {
             Some(o) if !allowed(o, &origins) => {
+                stats::REFUSED.add(1);
                 let mut e = ErrorResponse::new(Some("this page may not connect".into()));
                 *e.status_mut() = StatusCode::FORBIDDEN;
                 Err(e)
@@ -339,6 +454,7 @@ async fn connection(stream: TcpStream, hub: Arc<Mutex<Hub>>, id: u64, origins: A
     else {
         return;
     };
+    stats::CONNECTIONS.add(1);
     let (mut sink, mut source) = ws.split();
     let (tx, mut rx) = unbounded_channel::<Message>();
     hub.lock().unwrap().conns.insert(
@@ -375,8 +491,11 @@ async fn connection(stream: TcpStream, hub: Arc<Mutex<Hub>>, id: u64, origins: A
         allowance = (allowance + now.duration_since(last).as_secs_f64() * RATE).min(BURST);
         last = now;
         if allowance < 1.0 {
+            stats::FLOODS.add(1);
             break; // flooding: goodbye
         }
+        stats::MESSAGES_IN.add(1);
+        stats::BYTES_IN.add(text.len() as u64);
         allowance -= 1.0;
         let mut h = hub.lock().unwrap();
         let result = match serde_json::from_str::<Value>(&text) {
@@ -384,6 +503,7 @@ async fn connection(stream: TcpStream, hub: Arc<Mutex<Hub>>, id: u64, origins: A
             Err(_) => Err("not JSON".into()),
         };
         if let Err(e) = result {
+            stats::ERRORS.add(1);
             h.deliver(vec![(id, json!({ "t": "err", "msg": e }))]);
         }
     }
@@ -417,6 +537,7 @@ async fn main() {
         data: data.clone(),
         random: RandomState::new(),
         counter: 0,
+        monitor: stats::Monitor::new(),
     }));
     let listener = TcpListener::bind(&addr).await.expect("cannot listen");
     eprintln!(
@@ -425,6 +546,7 @@ async fn main() {
             .map_or("memory only".into(), |d| d.display().to_string()),
         origins.join(", ")
     );
+    let disk = data.clone();
     let clock = hub.clone();
     tokio::spawn(async move {
         let mut every = tokio::time::interval(Duration::from_millis(250));
@@ -439,6 +561,26 @@ async fn main() {
                     store::prune(d);
                 }
             }
+        }
+    });
+    // Every ten seconds a sample of the process; every minute the rooms on disk are counted.
+    let watch = hub.clone();
+    tokio::spawn(async move {
+        let mut every = tokio::time::interval(Duration::from_secs(stats::EVERY));
+        let mut n: u64 = 0;
+        loop {
+            every.tick().await;
+            if n % 6 == 0 {
+                if let Some(d) = disk.clone() {
+                    if let Ok(found) = tokio::task::spawn_blocking(move || stats::scan(&d)).await {
+                        watch.lock().unwrap().monitor.disk = found;
+                    }
+                }
+            }
+            n += 1;
+            let mut h = watch.lock().unwrap();
+            let (conns, rooms, games) = (h.conns.len(), h.rooms.len(), h.games_under_way());
+            h.monitor.sample(conns, rooms, games);
         }
     });
     let next = AtomicU64::new(1);

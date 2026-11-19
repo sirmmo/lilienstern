@@ -446,6 +446,7 @@ impl Room {
             return;
         }
         self.log.push(json!({ "op": "step" }));
+        crate::stats::DAYS.add(1);
         self.ready.clear();
         self.fingerprint = None;
         self.last_active = now;

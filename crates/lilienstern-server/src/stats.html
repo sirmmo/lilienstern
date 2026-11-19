@@ -1,0 +1,316 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Lilienstern server</title>
+<style>
+:root {
+  color-scheme: light;
+  --bg: #f4f3f0;
+  --surface: #fcfcfb;
+  --line: #e2e1dc;
+  --grid: #ecebe7;
+  --ink: #0b0b0b;
+  --ink-2: #52514e;
+  --ink-3: #7a7974;
+  --series: #2a78d6;
+  --series-fill: rgba(42, 120, 214, .10);
+  --good: #0ca30c;
+  --warn: #b77800;
+  --bad: #d03b3b;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --bg: #111110;
+    --surface: #1a1a19;
+    --line: #2e2e2c;
+    --grid: #262624;
+    --ink: #f0efec;
+    --ink-2: #c3c2b7;
+    --ink-3: #8f8e86;
+    --series: #3987e5;
+    --series-fill: rgba(57, 135, 229, .16);
+    --warn: #fab219;
+    --bad: #e66767;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  padding: 24px 16px 40px;
+}
+main { max-width: 1080px; margin: 0 auto; }
+header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 16px; margin-bottom: 20px; }
+h1 { font-size: 20px; margin: 0; font-weight: 650; letter-spacing: -.01em; }
+header .meta { color: var(--ink-3); font-size: 13px; }
+header .live { margin-left: auto; color: var(--ink-3); font-size: 13px; display: flex; align-items: center; gap: 6px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--good); }
+.dot.off { background: var(--bad); }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; }
+.tile { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+.tile h2 { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-3); margin: 0 0 6px; }
+.big { font-size: 30px; font-weight: 650; font-variant-numeric: tabular-nums; letter-spacing: -.02em; line-height: 1.1; }
+.big small { font-size: 14px; font-weight: 500; color: var(--ink-2); letter-spacing: 0; }
+.rows { margin: 10px 0 0; display: grid; grid-template-columns: 1fr auto; gap: 3px 12px; font-size: 13px; }
+.rows dt { color: var(--ink-2); }
+.rows dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+.bar { height: 6px; border-radius: 3px; background: var(--grid); margin-top: 10px; overflow: hidden; }
+.bar i { display: block; height: 100%; background: var(--series); border-radius: 3px; width: 0; transition: width .4s; }
+.bar.warn i { background: var(--warn); }
+.bar.bad i { background: var(--bad); }
+.tile.wide { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 32px; }
+.tile.wide h2 { width: 100%; margin: 0; }
+.tile.wide .rows { margin: 0; flex: 1; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px 20px; }
+.tile.wide .rows div dt { font-size: 12px; }
+.tile.wide .rows div dd { text-align: left; font-size: 15px; }
+.charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 400px), 1fr)); gap: 12px; margin-top: 12px; }
+.chart { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px 10px; position: relative; }
+.chart .head { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
+.chart h2 { font-size: 13px; font-weight: 600; margin: 0; }
+.chart .now { color: var(--ink-2); font-size: 13px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.chart svg { display: block; width: 100%; height: 150px; margin-top: 8px; overflow: visible; }
+.chart .axis { fill: var(--ink-3); font-size: 10px; }
+.chart .gridline { stroke: var(--grid); stroke-width: 1; }
+.chart .area { fill: var(--series-fill); }
+.chart .lineplot { fill: none; stroke: var(--series); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.chart .cross { stroke: var(--ink-3); stroke-width: 1; stroke-dasharray: 2 3; }
+.chart .marker { fill: var(--series); stroke: var(--surface); stroke-width: 2; }
+.tip { position: absolute; pointer-events: none; background: var(--ink); color: var(--surface); font-size: 12px; padding: 5px 8px; border-radius: 6px; white-space: nowrap; transform: translate(-50%, -100%); font-variant-numeric: tabular-nums; }
+.empty { color: var(--ink-3); font-size: 13px; padding: 50px 0; text-align: center; }
+footer { margin-top: 20px; color: var(--ink-3); font-size: 12px; }
+footer a { color: inherit; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Lilienstern game server</h1>
+    <span class="meta" id="meta">…</span>
+    <span class="live"><span class="dot" id="dot"></span><span id="updated">connecting</span></span>
+  </header>
+
+  <section class="tiles">
+    <div class="tile">
+      <h2>Games stored</h2>
+      <div class="big" id="stored">–</div>
+      <dl class="rows" id="storedRows"></dl>
+    </div>
+    <div class="tile">
+      <h2>Playing now</h2>
+      <div class="big" id="people">–</div>
+      <dl class="rows" id="liveRows"></dl>
+    </div>
+    <div class="tile">
+      <h2>Processor</h2>
+      <div class="big" id="cpu">–</div>
+      <dl class="rows" id="cpuRows"></dl>
+    </div>
+    <div class="tile">
+      <h2>Memory</h2>
+      <div class="big" id="mem">–</div>
+      <div class="bar" id="memBar"><i></i></div>
+      <dl class="rows" id="memRows"></dl>
+    </div>
+    <div class="tile wide">
+      <h2>Since the server started</h2>
+      <div class="big" id="days">–</div>
+      <dl class="rows" id="trafficRows"></dl>
+    </div>
+  </section>
+
+  <section class="charts">
+    <div class="chart" id="cCpu"><div class="head"><h2>Processor, % of one core</h2><span class="now"></span></div><svg></svg></div>
+    <div class="chart" id="cMem"><div class="head"><h2>Memory in use</h2><span class="now"></span></div><svg></svg></div>
+    <div class="chart" id="cConn"><div class="head"><h2>Connections</h2><span class="now"></span></div><svg></svg></div>
+    <div class="chart" id="cGames"><div class="head"><h2>Games under way</h2><span class="now"></span></div><svg></svg></div>
+  </section>
+
+  <footer>Last hour, one sample every 10 seconds. Totals only: no room codes are shown.
+    Numbers: <a href="stats.json">stats.json</a>. Play at <a href="https://ingmmo.com/lilienstern/">ingmmo.com/lilienstern</a>.</footer>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const nf = new Intl.NumberFormat('en');
+const n = (x) => (x == null ? '–' : nf.format(x));
+
+function bytes(b) {
+  if (b == null) return '–';
+  const u = ['B', 'kB', 'MB', 'GB', 'TB'];
+  let i = 0;
+  while (b >= 1024 && i < u.length - 1) { b /= 1024; i++; }
+  return (b >= 100 || i === 0 ? Math.round(b) : b.toFixed(1)) + ' ' + u[i];
+}
+function duration(s) {
+  const d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60);
+  return d ? `${d} d ${h} h` : h ? `${h} h ${m} min` : `${m} min`;
+}
+function clock(t) {
+  return new Date(t * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+function rows(id, pairs) {
+  const wide = $(id).parentElement.classList.contains('wide');
+  $(id).innerHTML = pairs.filter(Boolean)
+    .map(([k, v]) => wide ? `<div><dt>${k}</dt><dd>${v}</dd></div>` : `<dt>${k}</dt><dd>${v}</dd>`).join('');
+}
+const title = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+
+/** A line chart of one series against time, with a crosshair and a tooltip. */
+function chart(id, at, values, fmt, floor) {
+  const box = $(id), svg = box.querySelector('svg');
+  box.querySelector('.now').textContent = values.length ? 'now ' + fmt(values[values.length - 1]) : '';
+  const empty = box.querySelector('.empty');
+  if (values.length < 2) {
+    svg.innerHTML = '';
+    svg.hidden = true;
+    if (!empty) svg.insertAdjacentHTML('afterend', '<div class="empty">Collecting samples…</div>');
+    return;
+  }
+  svg.hidden = false;
+  empty?.remove();
+  const W = svg.clientWidth || 400, H = 150, L = 44, R = 6, T = 8, B = 20;
+  let top = Math.max(floor, ...values);
+  const step = niceStep(top / 3);
+  top = Math.ceil(top / step) * step || step;
+  const t0 = at[0], t1 = at[at.length - 1];
+  const x = (t) => L + (t - t0) / Math.max(1, t1 - t0) * (W - L - R);
+  const y = (v) => T + (1 - v / top) * (H - T - B);
+  let g = '';
+  for (let v = 0; v <= top + 1e-9; v += step) {
+    g += `<line class="gridline" x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}"/>`;
+    g += `<text class="axis" x="${L - 6}" y="${y(v) + 3}" text-anchor="end">${fmt(v, true)}</text>`;
+  }
+  // Start and end, and the middle ones once there is room for distinct times.
+  const ticks = t1 - t0 >= 1200 && W > 360 ? 4 : t1 - t0 >= 240 ? 2 : 1;
+  let shown = null;
+  for (let i = 0; i <= ticks; i++) {
+    const t = t0 + (t1 - t0) * i / ticks, label = clock(t);
+    if (label === shown && i < ticks) continue;
+    shown = label;
+    g += `<text class="axis" x="${x(t)}" y="${H - 4}" text-anchor="${i === 0 ? 'start' : i === ticks ? 'end' : 'middle'}">${label}</text>`;
+  }
+  const pts = values.map((v, i) => `${x(at[i]).toFixed(1)},${y(v).toFixed(1)}`);
+  g += `<path class="area" d="M${x(t0)},${y(0)} L${pts.join(' L')} L${x(t1)},${y(0)} Z"/>`;
+  g += `<path class="lineplot" d="M${pts.join(' L')}"/>`;
+  g += `<line class="cross" y1="${T}" y2="${H - B}" visibility="hidden"/><circle class="marker" r="4" visibility="hidden"/>`;
+  g += `<rect x="${L}" y="0" width="${W - L - R}" height="${H}" fill="transparent"/>`;
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  svg.innerHTML = g;
+  const cross = svg.querySelector('.cross'), dot = svg.querySelector('.marker');
+  let tip = box.querySelector('.tip');
+  if (!tip) { tip = document.createElement('div'); tip.className = 'tip'; tip.hidden = true; box.appendChild(tip); }
+  const show = (e) => {
+    const r = svg.getBoundingClientRect();
+    const px = (e.clientX - r.left) * W / r.width;
+    let i = 0, best = Infinity;
+    at.forEach((t, j) => { const d = Math.abs(x(t) - px); if (d < best) { best = d; i = j; } });
+    const cx = x(at[i]), cy = y(values[i]);
+    cross.setAttribute('x1', cx); cross.setAttribute('x2', cx); cross.setAttribute('visibility', 'visible');
+    dot.setAttribute('cx', cx); dot.setAttribute('cy', cy); dot.setAttribute('visibility', 'visible');
+    tip.hidden = false;
+    tip.textContent = `${new Date(at[i] * 1000).toLocaleTimeString()} · ${fmt(values[i])}`;
+    const b = box.getBoundingClientRect();
+    const left = r.left - b.left + cx * r.width / W;
+    tip.style.left = Math.min(Math.max(left, tip.offsetWidth / 2 + 4), b.width - tip.offsetWidth / 2 - 4) + 'px';
+    tip.style.top = (r.top - b.top + cy * r.height / H - 8) + 'px';
+  };
+  const hide = () => { cross.setAttribute('visibility', 'hidden'); dot.setAttribute('visibility', 'hidden'); tip.hidden = true; };
+  svg.onpointermove = show; svg.onpointerdown = show; svg.onpointerleave = hide;
+}
+function niceStep(x) {
+  if (!(x > 0)) return 1;
+  const p = 10 ** Math.floor(Math.log10(x)), f = x / p;
+  return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * p;
+}
+
+let last = null;
+async function refresh() {
+  try {
+    const r = await fetch('stats.json', { cache: 'no-store' });
+    if (!r.ok) throw new Error(r.status);
+    last = await r.json();
+    render(last);
+    $('dot').classList.remove('off');
+    $('updated').textContent = 'updated ' + new Date().toLocaleTimeString();
+  } catch {
+    $('dot').classList.add('off');
+    $('updated').textContent = 'server not answering';
+  }
+}
+
+function render(s) {
+  $('meta').textContent = `${s.version} · up ${duration(s.uptime)}`;
+
+  const d = s.disk, m = s.rooms;
+  $('stored').innerHTML = d.kept ? n(d.rooms) : '<small>not kept on disk</small>';
+  rows('storedRows', d.kept && [
+    ['Under way', n(d.under_way)],
+    ['Waiting to begin', n(d.lobby)],
+    ['Finished', n(d.over)],
+    ...Object.entries(d.by_game).map(([g, c]) => [title(g), n(c)]),
+    ['On disk', bytes(d.bytes)],
+    ['Kept for', `${d.keep_days} days idle`],
+  ] || []);
+
+  $('people').innerHTML = `${n(m.people)} <small>${m.people === 1 ? 'player' : 'players'}</small>`;
+  rows('liveRows', [
+    ['Connections', n(m.connections)],
+    ['Games under way', n(m.under_way)],
+    m.paused && ['Paused', n(m.paused)],
+    ['Rooms waiting to begin', n(m.lobby)],
+    ['Rooms in memory', `${n(m.in_memory)} of ${n(m.max_rooms)}`],
+    ['Commands in memory', n(m.commands)],
+  ]);
+
+  const p = s.process, h = s.host;
+  $('cpu').innerHTML = `${p.cpu.toFixed(1)}<small> % of a core</small>`;
+  const load = h.load ? h.load.map((x) => x.toFixed(1)).join(' / ') : '–';
+  rows('cpuRows', [
+    ['Machine cores', n(h.cpus)],
+    ['<span title="Average of runnable tasks over 1, 5 and 15 minutes">Machine load</span>', load],
+    ['Server threads', n(p.threads)],
+  ]);
+
+  const used = s.container.memory ?? p.rss, limit = s.container.limit;
+  $('mem').innerHTML = `${bytes(p.rss)}${limit ? `<small> of ${bytes(limit)}</small>` : ''}`;
+  const share = limit ? used / limit : 0;
+  $('memBar').hidden = !limit;
+  $('memBar').className = 'bar' + (share > .9 ? ' bad' : share > .7 ? ' warn' : '');
+  $('memBar').firstElementChild.style.width = Math.min(100, share * 100).toFixed(1) + '%';
+  rows('memRows', [
+    ['Server process', bytes(p.rss)],
+    ['Highest so far', bytes(p.peak_rss)],
+    s.container.memory != null && ['Container (with file cache)', bytes(s.container.memory)],
+    h.memory && ['Machine free', `${bytes(h.available)} of ${bytes(h.memory)}`],
+  ]);
+
+  const t = s.traffic;
+  $('days').innerHTML = `${n(t.days)} <small>${t.days === 1 ? 'day' : 'days'} played</small>`;
+  rows('trafficRows', [
+    ['Rooms opened', n(t.rooms_opened)],
+    ['Connections', n(t.connections)],
+    ['Most at once', n(t.peak_connections)],
+    ['Messages in', `${n(t.messages_in)} · ${bytes(t.bytes_in)}`],
+    ['Messages out', `${n(t.messages_out)} · ${bytes(t.bytes_out)}`],
+    ['Requests turned down', n(t.errors)],
+    (t.refused || t.floods) && ['Pages / floods turned away', `${n(t.refused)} / ${n(t.floods)}`],
+  ]);
+
+  const hs = s.history;
+  chart('cCpu', hs.at, hs.cpu, (v, axis) => axis ? v + '%' : v.toFixed(1) + ' %', 1);
+  chart('cMem', hs.at, hs.rss.map((b) => b / 1048576), (v, axis) => axis ? Math.round(v) + ' MB' : v.toFixed(1) + ' MB', 4);
+  chart('cConn', hs.at, hs.connections, (v) => n(Math.round(v)), 2);
+  chart('cGames', hs.at, hs.games, (v) => n(Math.round(v)), 2);
+}
+
+refresh();
+setInterval(refresh, 10000);
+let resize;
+addEventListener('resize', () => { clearTimeout(resize); resize = setTimeout(() => last && render(last), 150); });
+</script>
+</body>
+</html>
