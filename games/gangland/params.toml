@@ -57,6 +57,21 @@ attrition = 0.04
 presence_decay = 0.01
 police_attrition = 0.3
 
+# Crews and techs (crews.toml, crews.lil): off unless crews = "crews.toml", so that the
+# experiments in docs/EXPERIMENTS.md stay as they were run
+crews = ""
+foot_speed = 3            # km a day
+bike_speed = 10
+hitmen_speed = 5
+contacts_base = 0.25      # contacts a gang hears a day...
+contacts_corner = 0.03    # ...and a day from each corner
+contacts_racket = 0.06    # ...and each racket
+laundering = 4            # cash a day with Money laundering
+raise_heat = 5            # heat where a crew is raised
+raise_threat = 0.1        # how much enemy crews nearby make the AI raise its own
+thrift = 0                # how much the AI's raising minds its cash balance (gangs make plenty)
+army_weight = 0.6         # ...and the crews it has
+
 # Shocks used by experiments
 shock_day = -1            # day of the economic shock (-1: none)
 shock_factor = 0.6        # wealth kept by the eastern half of the city

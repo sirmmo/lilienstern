@@ -15,11 +15,7 @@
 <div id="hud" class="panel" hidden>
   <div class="realm"><i id="realmColor"></i><b id="realmName"></b><span id="rank" class="muted"></span></div>
   <div class="day"><span id="day"></span><span class="muted"> / <span id="days"></span></span></div>
-  <div class="stats">
-    <div class="money" title="Where it comes from: click"><img src="icons/funds.jpg" alt=""><span class="lbl">Funds</span><b id="funds"></b><span id="fundsDay" class="delta"></span></div>
-    <div class="money" title="Where they come from: click"><img src="icons/recruits.jpg" alt=""><span class="lbl">Recruits</span><b id="recruits"></b><span id="recruitsDay" class="delta"></span></div>
-    <div><img src="icons/provinces.jpg" alt=""><span class="lbl">Provinces</span><b id="provinces"></b></div>
-  </div>
+  <div class="stats"></div>
   <div id="ecoWarn" class="warn" hidden></div>
   <button id="bTreasury" class="link">Treasury: where the money comes from</button>
   <div class="actions"><span class="lbl">Decisions today</span><span id="moves"></span></div>
@@ -72,13 +68,6 @@
       <label><input type="radio" name="families" value="8" checked> 8 <span class="muted">(and Este, Colonna, Aragona, Chiaramonte)</span></label>
       <label><input type="radio" name="families" value="16"> 16 <span class="muted">(every family, from Doria to Malatesta)</span></label>
     </div>
-    <h3>Era</h3>
-    <div class="choices" id="eraChoice">
-      <label><input type="radio" name="era" value="medieval" checked> Medieval <span class="muted">(levies, archers, men-at-arms, knights)</span>
-        <span class="era-icons"><img src="icons/medieval-light.jpg" alt=""><img src="icons/medieval-ranged.jpg" alt=""><img src="icons/medieval-heavy.jpg" alt=""><img src="icons/medieval-fast.jpg" alt=""></span></label>
-      <label><input type="radio" name="era" value="future"> Future <span class="muted">(Italy in 2300: militia, drones, mechs, hovertanks)</span>
-        <span class="era-icons"><img src="icons/future-light.jpg" alt=""><img src="icons/future-ranged.jpg" alt=""><img src="icons/future-heavy.jpg" alt=""><img src="icons/future-fast.jpg" alt=""></span></label>
-    </div>
     <h3>Your family</h3>
     <div id="realmChoice" class="realms"><span class="muted">Loading the engine…</span></div>
     <div class="seed">Seed <input id="seed" type="number" min="1" step="1"></div>
@@ -120,15 +109,14 @@
   window.GAME = {
     id: 'italia',
     files: (p) => ['params.toml', 'game.toml', 'italia.lil', 'marches/realms.lil', 'marches/people.lil', 'marches/eras/medieval.toml',
-      'marches/eras/medieval.lil', 'marches/eras/future.toml', `maps/italia-1871-${p.map}.geojson`],
+      'marches/eras/medieval.lil', `maps/italia-1871-${p.map}.geojson`],
     cities: 'maps/italia-cities.geojson', // the provinces' capitals, with their 1871 names
     // The families' coats of arms (crests/README.md says where each comes from).
     crests: Object.fromEntries(['Savoia', 'Visconti', 'Della Scala', 'Medici', 'Este', 'Colonna', 'Aragona', 'Chiaramonte',
       'Doria', 'Gonzaga', 'Montefeltro', 'Bentivoglio', 'Orsini', 'Arborea', 'Sanseverino', 'Malatesta']
       .map((n) => [n, `crests/${n.toLowerCase().replace(/ /g, '-')}.png`])),
     probe: { map: 'province', families: 16, days: 1 },
-    params: () => ({ era: document.querySelector('input[name=era]:checked').value,
-      map: document.querySelector('input[name=map]:checked').value,
+    params: () => ({ map: document.querySelector('input[name=map]:checked').value,
       families: +document.querySelector('input[name=families]:checked').value }),
     count: 'families',
   };

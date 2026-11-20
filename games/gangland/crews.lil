@@ -1,0 +1,148 @@
+# Crews (crews.toml): what gangs do with them, and where their contacts come from.
+# Crews cost cash to raise and every day to keep; no cap but the cost. The AI minds its cash
+# balance (income less upkeep) and the size of its crews, and raises more when threatened.
+
+# ---- Contacts, for the techs ----
+
+event street_talk                # every gang hears things
+    label The street
+    scope faction
+    for gang
+    do global Contacts add $contacts_base
+end
+
+unitRule corner_contacts         # people who buy talk
+    appliesTo corner
+    global Contacts out $contacts_corner
+end
+
+unitRule racket_contacts         # people who pay know people
+    appliesTo racket
+    global Contacts out $contacts_racket
+end
+
+# ---- What some techs do beyond the crews ----
+
+event informants                 # less heat where the gang holds
+    label Informants
+    scope place
+    for gang
+    if tech informants
+    do map Heat mul 0.9
+end
+
+event laundering
+    label Laundered money
+    scope faction
+    for gang
+    if tech laundering
+    do global Cash add $laundering
+end
+
+# ---- Raising crews (where the gang holds, with no enemy crew there) ----
+
+decision raise_soldiers
+    label Raise street soldiers
+    for gang
+    target owned
+    if foes is 0
+    do raise soldiers
+    do map Heat add $raise_heat
+    weight 1.2
+    weight threat $raise_threat
+    weight balance Cash $thrift
+    weight army -$army_weight
+    weight map Police -0.03
+end
+
+decision raise_shooters
+    label Raise shooters
+    for gang
+    target owned
+    if foes is 0
+    do raise shooters
+    do map Heat add $raise_heat
+    weight 1
+    weight threat $raise_threat
+    weight balance Cash $thrift
+    weight army -$army_weight
+    weight map Police -0.03
+end
+
+decision raise_enforcers
+    label Raise enforcers
+    for gang
+    target owned
+    if foes is 0
+    do raise enforcers
+    do map Heat add $raise_heat
+    weight 1.2
+    weight threat $raise_threat
+    weight balance Cash $thrift
+    weight army -$army_weight
+    weight map Police -0.03
+end
+
+decision raise_riders
+    label Raise scooter riders
+    for gang
+    target owned
+    if foes is 0
+    do raise riders
+    do map Heat add $raise_heat
+    weight 1.2
+    weight threat $raise_threat
+    weight balance Cash $thrift
+    weight army -$army_weight
+    weight map Police -0.03
+end
+
+decision raise_hitmen
+    label Hire hitmen
+    for gang
+    target owned
+    if foes is 0
+    do raise hitmen
+    do map Heat add $raise_heat
+    weight 1
+    weight threat $raise_threat
+    weight balance Cash $thrift
+    weight army -$army_weight
+end
+
+# ---- Sending them (idle crews nearby go; a person orders their own on the map) ----
+
+decision send_crews
+    label Send crews in
+    for gang
+    target adjacent
+    if owner other
+    if relation war
+    if idle atLeast 2
+    do march 3
+    weight 3
+    weight map Wealth 0.04
+    weight foes -1.5
+    weight map Police -0.05
+end
+
+decision take_block
+    label Send a crew
+    for gang
+    target adjacent
+    if owner none
+    if idle atLeast 1
+    do march 1
+    weight 1
+    weight map Wealth 0.02
+end
+
+decision defend_block
+    label Defend the block
+    for gang
+    target owned
+    if threat greater 0.3
+    if idle atLeast 1
+    do march 2
+    weight threat 3
+end

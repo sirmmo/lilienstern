@@ -1,6 +1,7 @@
 name = "Gangland"
 description = "Gangs fight over the neighbourhoods of a large city: they deal, extort and recruit, and the police patrols and raids."
 scripts = ["economy.gbx", "politics.lil"]
+include = ["$crews"]          # "crews.toml": crews and techs (the browser game); "": presence alone
 days = 730
 sample_every = 10
 

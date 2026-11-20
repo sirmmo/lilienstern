@@ -36,6 +36,10 @@ pub struct State {
     /// This tick's deliveries and agent resources nobody took, by resource.
     pub delivered: Vec<f64>,
     pub undelivered: Vec<f64>,
+    /// What each unit rule added to the accounts this tick (taken away: negative), for the
+    /// host's books: `flows[rule][account * resources + resource]`; and how many units did.
+    pub flows: Vec<Vec<f64>>,
+    pub flow_units: Vec<Vec<u32>>,
 }
 
 impl State {
@@ -49,6 +53,8 @@ impl State {
             metrics: Vec::new(),
             delivered: Vec::new(),
             undelivered: Vec::new(),
+            flows: Vec::new(),
+            flow_units: Vec::new(),
         };
         s.sync(rules, places);
         s
@@ -72,6 +78,15 @@ impl State {
         self.metrics.resize(rules.metrics.len(), 0.0);
         self.delivered.resize(nr, 0.0);
         self.undelivered.resize(nr, 0.0);
+        let na = self.accounts.len();
+        self.flows.resize(rules.unit_rules.len(), Vec::new());
+        for f in &mut self.flows {
+            f.resize(na * nr, 0.0);
+        }
+        self.flow_units.resize(rules.unit_rules.len(), Vec::new());
+        for f in &mut self.flow_units {
+            f.resize(na, 0);
+        }
     }
 
     pub fn add_unit(&mut self, rules: &Rules, def: usize, place: usize, account: usize) -> usize {
@@ -218,7 +233,10 @@ pub fn step(rules: &Rules, graph: &[Vec<usize>], s: &mut State) {
     s.metrics.iter_mut().for_each(|m| *m = 0.0);
     s.delivered.iter_mut().for_each(|m| *m = 0.0);
     s.undelivered.iter_mut().for_each(|m| *m = 0.0);
+    s.flows.iter_mut().flatten().for_each(|m| *m = 0.0);
+    s.flow_units.iter_mut().flatten().for_each(|m| *m = 0);
     let by_unit = rules.rules_by_unit();
+    let nr = rules.resources.len();
 
     // Units, in the order they were made.
     for i in 0..s.units.len() {
@@ -233,7 +251,17 @@ pub fn step(rules: &Rules, graph: &[Vec<usize>], s: &mut State) {
                 continue;
             }
             fired += 1;
+            let before = s.accounts[account].clone();
             met += run(rules, graph, s, &rule.body, place, account, Some(i));
+            let mut moved = false;
+            for (r, b) in before.iter().enumerate() {
+                let d = s.accounts[account][r] - b;
+                if d != 0.0 {
+                    s.flows[ri][account * nr + r] += d;
+                    moved = true;
+                }
+            }
+            s.flow_units[ri][account] += u32::from(moved);
         }
         if fired > 0 {
             let u = &mut s.units[i];

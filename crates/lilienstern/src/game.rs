@@ -462,6 +462,9 @@ impl Game {
                 let f = f
                     .as_str()
                     .ok_or("game.toml: include must be a list of files")?;
+                if f.trim().is_empty() {
+                    continue; // a parameter left empty: nothing to include
+                }
                 let text = params.substitute(f, &read(f)?)?;
                 let t: toml::Table = toml::from_str(&text).map_err(|e| format!("{f}: {e}"))?;
                 merge(&mut table, t, f)?;

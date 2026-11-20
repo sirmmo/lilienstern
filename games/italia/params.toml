@@ -4,8 +4,7 @@
 # The land: ISTAT's units of the 1871 census (see maps/README.md)
 map = "circondari"        # "circondari" (284 circondari and distretti) or "province" (69 provinces)
 basemap = "none"          # under the map viewer: "none", "osm", or a MapLibre style
-era = "medieval"          # troops: ../marches/eras/medieval.toml or future.toml
-eras_dir = "../marches/eras"
+eras_dir = "../marches/eras"   # Marches' medieval troops, terrain and techs (game.toml)
 days = 1825               # five years
 
 # The families

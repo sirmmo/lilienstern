@@ -157,3 +157,55 @@ fn plays_on_a_real_map_and_writes_a_viewer() {
         .collect();
     assert_eq!(ids.last(), Some(&"lilienstern-line"));
 }
+
+#[test]
+fn crews_and_techs_are_a_choice() {
+    // Without them (the experiments' Gangland), no troops and no techs.
+    let plain = small(&[]);
+    assert!(plain.war.troops.is_empty() && plain.war.techs.is_empty());
+    // With them, gangs raise crews, send them, fight, and learn.
+    let g = small(&[("crews", "crews.toml")]);
+    assert_eq!(g.war.troops.len(), 5);
+    assert_eq!(g.war.techs.len(), 9);
+    let mut w = World::new(&g, 3).unwrap();
+    w.run(400);
+    let s = w.summary();
+    assert!(s["raised"] > 10.0, "gangs raise crews: {s:?}");
+    assert!(s["battles"] > 0.0, "crews fight: {s:?}");
+    let learnt: usize = (0..w.factions.len())
+        .map(|f| w.known[f].iter().filter(|&&k| k).count())
+        .sum();
+    assert!(learnt >= 6, "gangs learn the trade: {learnt}");
+    assert!(s["held"] > 0.5, "and still hold most of the city: {s:?}");
+}
+
+#[test]
+fn the_books_name_the_business() {
+    // Cash a gang makes comes from its units (GlassBox rules): the ledger says which.
+    let g = small(&[]);
+    let mut w = World::new(&g, 2).unwrap();
+    w.run(30);
+    let names = w.source_names();
+    let cash = g
+        .rules
+        .resources
+        .iter()
+        .position(|r| r.id == "Cash")
+        .unwrap();
+    let ns = names.len();
+    let gang = (0..w.factions.len())
+        .find(|&f| g.factions[f].id.starts_with("gang") && w.factions[f].alive)
+        .unwrap();
+    let row = |label: &str| -> f64 {
+        names
+            .iter()
+            .enumerate()
+            .filter(|(_, (_, l))| l == label)
+            .map(|(s, _)| w.ledger_total.amount[gang][cash * ns + s])
+            .sum()
+    };
+    assert!(row("Street corner") > 0.0, "corners sell");
+    assert!(row("Lab") < 0.0, "labs cost");
+    let other = w.ledger_total.amount[gang][cash * ns + 3];
+    assert!(other.abs() < 1e-6, "nothing left unexplained: {other}");
+}

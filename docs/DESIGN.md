@@ -107,8 +107,10 @@ can now save for a goal (`saving = "goal"`).
 ## The economy
 
 Every change to a faction's resources is booked in a **ledger**, by where it came from: its
-fixed income, each event (taxes, levies), each decision, research, troop upkeep, and "other"
-for what GlassBox's own rules did. The day's ledger closes at the end of the day; what no
+fixed income, each event (taxes, levies), each GlassBox unit rule (Gangland's corners, labs and
+rackets, named after their units), each decision, research, troop upkeep, and "other" for the
+rest (GlassBox's map and agent rules). GlassBox records what each unit rule added to or took
+from each account during its tick (`State::flows`). The day's ledger closes at the end of the day; what no
 script booked is found by comparing the accounts with the day before, so the ledger always
 adds up to the change. It is bookkeeping only: nothing in the game depends on it except the
 `income`, `upkeep` and `balance` that scripts can read (the last finished day's), so adding it

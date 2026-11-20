@@ -1,7 +1,7 @@
 name = "Italia"
 description = "Noble families fight over Italy, as cut by ISTAT's units of 1871 (the old provinces of the Italian states), raising troops and marching them across real mountains and plains."
 scripts = ["../marches/realms.lil", "../marches/people.lil", "italia.lil"]
-include = ["../marches/eras/$era.toml"]     # troops and terrain, shared with Marches
+include = ["../marches/eras/medieval.toml"]     # troops, terrain and techs, shared with Marches
 days = $days
 sample_every = 5
 

@@ -18,11 +18,11 @@ slowed by terrain, share places with allies, and fight enemies where they meet. 
 or cheaper.
 
 **[Play Gangland: Bologna](https://ingmmo.com/lilienstern/gangland-bologna/)**: run a gang in
-Bologna's 2,606 census sections, in your browser. **[Play Marches](https://ingmmo.com/lilienstern/marches/)**:
+Bologna's 2,606 census sections (or its 90 areas), raise crews and learn the trade, in your browser. **[Play Marches](https://ingmmo.com/lilienstern/marches/)**:
 rule a realm, raise troops and march them to war, medieval or futuristic.
 **[Play Italia](https://ingmmo.com/lilienstern/italia/)**: lead a noble family (Savoia, Visconti,
-Medici, Este, Aragona...) across ISTAT's Italy of 1871, on real mountains and plains.
-Marches and Italia can be played by several people on one map: taking turns on one device, or
+Medici, Este, Aragona...) across ISTAT's Italy of 1871, on real mountains and plains, with
+medieval troops. All three can be played by several people on one map: taking turns on one device, or
 online, browser to browser, with a room code. Documentation:
 **[ingmmo.com/lilienstern](https://ingmmo.com/lilienstern/)**.
 
@@ -70,8 +70,14 @@ default, 10 km across, with a river and five bridges).
 * **Politics** (`games/gangland/politics.lil`): gangs expand, reinforce, attack, regroup, open
   corners, rackets, labs and safehouses, hire muscle and bribe; the police patrols and raids.
   Where two gangs meet they clash, and violence drives wealth away.
-* **Parameters** (`games/gangland/params.toml`): about 50 numbers, from the number of gangs to
+* **Parameters** (`games/gangland/params.toml`): about 60 numbers, from the number of gangs to
   what police patrols go after.
+* **Crews and techs** (`games/gangland/crews.toml`, `crews.lil`), switched on with
+  `--set crews=crews.toml` (the browser game does): gangs raise street soldiers, shooters and
+  enforcers, and once they know how, scooter riders and hitmen, and send them across the city;
+  crews fight rival crews and take blocks over. Contacts from the street, corners and rackets go
+  into nine techs (burner phones, kevlar, an armory, informants, money laundering...). Without
+  them Gangland is the game of the experiments, where gangs move by presence alone.
 
 Six experiments come with it (`experiments/`), one on Bologna; see
 [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md) for what they ask and what they found.
@@ -119,9 +125,9 @@ Marches' (`games/italia` includes them); `tools/italia.py` builds the maps
 
 ## Playing together
 
-Marches and Italia take several people on the same map:
+Gangland, Marches and Italia take several people on the same map:
 
-* **On one device**: choose every family a person plays; each takes their turn (decisions and
+* **On one device**: choose every gang, realm or family a person plays; each takes their turn (decisions and
   orders), and the day runs when the last one ends it.
 * **Online**: one player opens a room and gets a five-letter code (or a `?join=CODE` link);
   friends join, pick a family each, and the host begins. Rooms live on Lilienstern's game
@@ -184,7 +190,7 @@ publishes both crates, with no stored token (crates.io trusted publishing).
 | `crates/lilienstern` | The engine: maps (generated or GeoJSON), games, factions, scripts, the AI, control, troops, metrics, experiments. |
 | `crates/lilienstern-cli` | The `lilienstern` command. |
 | `crates/lilienstern-web` | The engine as WebAssembly, driven by JSON messages, for the browser. |
-| `web/gangland-bologna`, `web/marches`, `web/italia` | The browser games (Italia is the Marches page with its own start screen). `tools/site.py` builds the site (docs and games). |
+| `web/gangland-bologna`, `web/marches`, `web/italia` | The browser games: one page (`web/marches/app.js`), set up by each game's start screen (`window.GAME`: its files, words, resources, views and map). `tools/site.py` builds the site (docs and games). |
 
 ## License
 

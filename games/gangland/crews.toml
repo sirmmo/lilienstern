@@ -1,0 +1,155 @@
+# Crews: the gangs raise street crews and send them across the city, and learn tricks of the
+# trade (techs). Included by game.toml when `crews = "crews.toml"` (the browser game sets it);
+# without it Gangland is the game of the experiments in docs/EXPERIMENTS.md, where gangs move
+# by presence alone. Distances in km, speeds in km a day.
+
+scripts = ["crews.lil"]
+
+[war]
+distance = "km"
+damage_scale = 0.35       # a day of fighting deals about a third of the table
+defense_per_star = 10
+home_defense = 1          # crews fight better on their own gang's blocks
+luck = 10
+heal = 4
+unpaid = 5                # health lost a day by crews that are not paid
+violence = 0.3            # fights add to the Violence map: the police notices
+relation = "war"          # every gang against every other
+
+[[terrain]]
+id = "streets"
+name = "Streets"
+move_cost = { foot = 1, bike = 1 }
+color = "#d9d4c7"
+
+[[resource]]
+id = "Contacts"           # who you know: it goes into the techs
+scope = "global"
+
+[[troop]]
+id = "soldiers"
+name = "Street soldiers"
+move = "foot"
+speed = $foot_speed
+cost = { Cash = 30, Crew = 3 }
+upkeep = { Cash = 0.4 }
+damage = { soldiers = 60, shooters = 45, enforcers = 35, riders = 50, hitmen = 30 }
+occupy = 3
+description = "Cheap and many: they stand on the corners and hold the block."
+
+[[troop]]
+id = "shooters"
+name = "Shooters"
+move = "foot"
+speed = $foot_speed
+cost = { Cash = 50, Crew = 3 }
+upkeep = { Cash = 0.6 }
+damage = { soldiers = 80, shooters = 55, enforcers = 60, riders = 70, hitmen = 45 }
+occupy = 1
+description = "Armed: they win fights, but take blocks slowly."
+
+[[troop]]
+id = "enforcers"
+name = "Enforcers"
+move = "foot"
+speed = $foot_speed
+cost = { Cash = 70, Crew = 4 }
+upkeep = { Cash = 0.8 }
+damage = { soldiers = 70, shooters = 65, enforcers = 50, riders = 45, hitmen = 50 }
+occupy = 5
+description = "Muscle: slow, hard to move, and the quickest to take a block."
+
+[[troop]]
+id = "riders"
+name = "Scooter riders"
+move = "bike"
+speed = $bike_speed
+cost = { Cash = 60, Crew = 2 }
+upkeep = { Cash = 0.6 }
+damage = { soldiers = 75, shooters = 60, enforcers = 40, riders = 55, hitmen = 50 }
+occupy = 2
+requires = "scooters"
+description = "Fast across the city: hit and gone."
+
+[[troop]]
+id = "hitmen"
+name = "Hitmen"
+move = "foot"
+speed = $hitmen_speed
+cost = { Cash = 110, Crew = 1 }
+upkeep = { Cash = 1.2 }
+damage = { soldiers = 95, shooters = 90, enforcers = 85, riders = 80, hitmen = 60 }
+occupy = 0
+requires = "contracts"
+description = "Professionals: deadly against any crew, useless at holding a block."
+
+# ---- Techs: Contacts (from corners, rackets and the street, crews.lil) go into one at a time.
+
+[research]
+resource = "Contacts"
+
+[[tech]]
+id = "burners"
+name = "Burner phones"
+cost = 60
+speed = 10
+description = "Phones nobody can trace: every crew moves a little faster."
+
+[[tech]]
+id = "scooters"
+name = "Scooters"
+cost = 90
+description = "Riders on scooters: across the city in a day."
+
+[[tech]]
+id = "kevlar"
+name = "Kevlar vests"
+cost = 120
+defense = 1
+troops = ["soldiers", "enforcers"]
+description = "Soldiers and enforcers take less damage."
+
+[[tech]]
+id = "armory"
+name = "An armory"
+cost = 120
+damage = 20
+troops = ["shooters", "enforcers"]
+description = "Better guns: shooters and enforcers hit harder."
+
+[[tech]]
+id = "block_parties"
+name = "Block parties"
+cost = 100
+occupy = 30
+troops = ["soldiers"]
+description = "The neighbourhood on your side: soldiers take blocks faster."
+
+[[tech]]
+id = "informants"
+name = "Informants"
+cost = 150
+requires = ["burners"]
+weight = 1.5
+description = "A friend in the station: less heat on the blocks you hold."
+
+[[tech]]
+id = "accountants"
+name = "Accountants"
+cost = 160
+upkeep = -25
+description = "Someone who counts: crews cost a quarter less to keep."
+
+[[tech]]
+id = "laundering"
+name = "Money laundering"
+cost = 240
+requires = ["accountants"]
+description = "Clean money from dirty: more cash every day."
+
+[[tech]]
+id = "contracts"
+name = "Contract killers"
+cost = 260
+requires = ["armory", "burners"]
+description = "Hitmen."

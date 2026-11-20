@@ -122,14 +122,20 @@ def main():
             f.write(TEMPLATE.format(title=html.escape(full_title), nav=nav(page), escaped=html.escape(md, quote=False), repo=REPO, src=src))
     shutil.copy(os.path.join(ROOT, "docs", "gangland.png"), out)
 
+    # Gangland is the Marches page (app.js, net.js, app.css, icons) with its own start screen and
+    # its crews' portraits.
     play = os.path.join(out, "gangland-bologna")
-    shutil.copytree(os.path.join(ROOT, "web", "gangland-bologna"), play)
+    shutil.copytree(os.path.join(ROOT, "web", "marches"), play, ignore=shutil.ignore_patterns("index.html"))
+    shutil.copy(os.path.join(ROOT, "web", "gangland-bologna", "index.html"), play)
+    shutil.copytree(os.path.join(ROOT, "web", "gangland-bologna", "icons"), os.path.join(play, "icons"), dirs_exist_ok=True)
+    os.rename(os.path.join(play, "icons", "README.md"), os.path.join(play, "icons", "README-gangland.md"))
+    shutil.copy(os.path.join(ROOT, "web", "marches", "icons", "README.md"), os.path.join(play, "icons", "README.md"))
     if not os.path.exists(a.wasm):
         raise SystemExit(f"{a.wasm} is missing: build it with cargo build --release --target wasm32-unknown-unknown -p lilienstern-web")
     shutil.copy(a.wasm, os.path.join(play, "lilienstern.wasm"))
     game = os.path.join(play, "game")
     os.makedirs(os.path.join(game, "maps"))
-    for f in ["params.toml", "game.toml", "economy.gbx", "politics.lil"]:
+    for f in ["params.toml", "game.toml", "economy.gbx", "politics.lil", "crews.toml", "crews.lil"]:
         shutil.copy(os.path.join(ROOT, "games", "gangland", f), game)
     for f in ["bologna-areas.geojson", "bologna-sections.geojson"]:
         shutil.copy(os.path.join(ROOT, "games", "gangland", "maps", f), os.path.join(game, "maps"))
@@ -153,7 +159,7 @@ def main():
               "maps/italia-cities.geojson"]:
         os.makedirs(os.path.dirname(os.path.join(game, f)), exist_ok=True)
         shutil.copy(os.path.join(ROOT, "games", "italia", f), os.path.join(game, f))
-    for f in ["realms.lil", "people.lil", "eras/medieval.toml", "eras/medieval.lil", "eras/future.toml"]:
+    for f in ["realms.lil", "people.lil", "eras/medieval.toml", "eras/medieval.lil"]:
         os.makedirs(os.path.dirname(os.path.join(game, "marches", f)), exist_ok=True)
         shutil.copy(os.path.join(ROOT, "games", "marches", f), os.path.join(game, "marches", f))
     with open(os.path.join(out, ".nojekyll"), "w"):

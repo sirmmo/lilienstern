@@ -50,7 +50,8 @@ pub struct ActiveModifier {
 type Opt = (f64, usize, Option<usize>, bool);
 
 /// Ledger sources: a faction's fixed income, troop upkeep, research, and what no script names;
-/// then one per event, then one per decision (see [`World::source_names`]).
+/// then one per event, one per GlassBox unit rule, and one per decision (see
+/// [`World::source_names`]).
 pub const SRC_INCOME: usize = 0;
 pub const SRC_UPKEEP: usize = 1;
 pub const SRC_RESEARCH: usize = 2;
@@ -323,7 +324,10 @@ impl<'g> World<'g> {
             }
         }
         let nr = rules.resources.len();
-        let sources = SRC_FIXED + game.script.events.len() + game.script.decisions.len();
+        let sources = SRC_FIXED
+            + game.script.events.len()
+            + rules.unit_rules.len()
+            + game.script.decisions.len();
         let mut w = World {
             game,
             seed,
@@ -412,9 +416,11 @@ impl<'g> World<'g> {
         w
     }
 
-    /// Each ledger source: (kind, label). Kinds: income, upkeep, research, other, event, decision.
+    /// Each ledger source: (kind, label). Kinds: income, upkeep, research, other, event, unit (a
+    /// GlassBox unit rule, named after the units it applies to), decision.
     pub fn source_names(&self) -> Vec<(&'static str, String)> {
         let s = &self.game.script;
+        let rules = &self.game.rules;
         let mut out = vec![
             ("income", "Income".to_string()),
             ("upkeep", "Troop upkeep".to_string()),
@@ -422,8 +428,45 @@ impl<'g> World<'g> {
             ("other", "Other".to_string()),
         ];
         out.extend(s.events.iter().map(|e| ("event", e.label.clone())));
+        out.extend(rules.unit_rules.iter().map(|r| {
+            let units: Vec<&str> = r
+                .units
+                .iter()
+                .map(|&u| rules.units[u].name.as_str())
+                .collect();
+            (
+                "unit",
+                if units.is_empty() {
+                    r.name.clone()
+                } else {
+                    units.join(", ")
+                },
+            )
+        }));
         out.extend(s.decisions.iter().map(|d| ("decision", d.label.clone())));
         out
+    }
+
+    /// The ledger source of decision `d` (the last sources).
+    fn src_decision(&self, d: usize) -> usize {
+        SRC_FIXED + self.game.script.events.len() + self.game.rules.unit_rules.len() + d
+    }
+
+    /// Books what the GlassBox units made and spent on the day, by unit rule.
+    fn book_units(&mut self) {
+        let g = self.game;
+        let nr = g.rules.resources.len();
+        for ri in 0..g.rules.unit_rules.len() {
+            self.source = SRC_FIXED + g.script.events.len() + ri;
+            for f in 0..self.factions.len() {
+                let a = self.factions[f].account;
+                let n = self.gb.flow_units[ri].get(a).copied().unwrap_or(0);
+                for r in 0..nr {
+                    let x = self.gb.flows[ri].get(a * nr + r).copied().unwrap_or(0.0);
+                    self.book(f, r, x, None, n);
+                }
+            }
+        }
     }
 
     /// Books `x` of resource `r` for faction `f` under the current source; `n` places, troops
@@ -445,7 +488,8 @@ impl<'g> World<'g> {
     fn close_ledger(&mut self) {
         let nr = self.game.rules.resources.len();
         let ns = self.sources;
-        let events = SRC_FIXED + self.game.script.events.len();
+        // What the land and the units gave: events and unit rules.
+        let events = SRC_FIXED + self.game.script.events.len() + self.game.rules.unit_rules.len();
         for f in 0..self.factions.len() {
             let acct = self.factions[f].account;
             for r in 0..nr {
@@ -572,6 +616,7 @@ impl<'g> World<'g> {
 
         // 2. GlassBox.
         glassbox::step(&g.rules, &self.city.neighbours, &mut self.gb);
+        self.book_units();
 
         // 3. Income.
         self.source = SRC_INCOME;
@@ -811,7 +856,7 @@ impl<'g> World<'g> {
             faction: Some(f),
             place,
         };
-        self.source = SRC_FIXED + g.script.events.len() + decision;
+        self.source = self.src_decision(decision);
         for &(r, v) in &d.costs {
             self.gb.accounts[acct][r] -= v;
             self.book(f, r, -v, place, 1);
@@ -1347,7 +1392,7 @@ impl<'g> World<'g> {
                 let Some(i) = chosen else { break };
                 let (_, di, t, _) = opts[i];
                 let d = &g.script.decisions[di];
-                self.source = SRC_FIXED + g.script.events.len() + di;
+                self.source = self.src_decision(di);
                 for &(r, v) in &d.costs {
                     self.gb.accounts[acct][r] -= v;
                     self.book(f, r, -v, t, 1);

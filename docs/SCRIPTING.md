@@ -54,7 +54,9 @@ include = ["eras/$era.toml"]   # more of game.toml, merged in
 
 An included file is read like `game.toml` (parameters work in it and in its name). Its lists of
 tables (`[[troop]]`, `[[map]]`, ...) are added to the game's, its tables merged; a value set in
-both is an error.
+both is an error. A name that is empty once its parameters are filled in is skipped, so a
+parameter can switch a part of the game on: Gangland's `include = ["$crews"]` adds crews and
+techs only when `crews = "crews.toml"`.
 
 ### [city]
 
@@ -368,9 +370,10 @@ name with spaces.
 ### The ledger
 
 Every change to a faction's global resources is booked under where it came from: its
-`income`, each event (by its label), each decision (its costs and effects, by its label),
-research, troop upkeep, and "other" for what no script names (GlassBox units and rules), with
-how many places, troops or decisions made each amount. `World::yesterday` is the last
+`income`, each event (by its label), each GlassBox unit rule (by the name of its units: "Street
+corner", "Lab"), each decision (its costs and effects, by its label), research, troop upkeep,
+and "other" for what no script names (GlassBox map and agent rules), with how many places,
+units, troops or decisions made each amount. A unit rule's money counts as `income`. `World::yesterday` is the last
 finished day (a player's decisions count in the day they were taken), `World::ledger_total`
 the whole game, and `World::yields[resource][place]` what each place's events gave its holder
 on the last day. Scripts read it through `income`, `upkeep` and `balance` below; the browser's
