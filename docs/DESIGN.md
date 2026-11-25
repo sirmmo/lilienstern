@@ -202,7 +202,14 @@ residents from the city's open data (`tools/bologna.py`); Milan's 88 NIL and 7,0
 sections (`tools/milano.py`); and Rome's 155 zone urbanistiche and 4,200 blocks of census
 sections, with the Tiber crossed at its bridges (`tools/roma.py`). Milan and Rome have their
 residents from ISTAT's 2021 census and their income from the IRPEF returns per postcode (see
-[the maps](../games/gangland/maps/README.md)).
+[the maps](../games/gangland/maps/README.md)). New York's 262 Neighborhood Tabulation Areas
+and 2,325 census tracts (`tools/newyork.py`) have their residents and median household income
+from the American Community Survey; its boroughs are islands, joined by the map's `links`.
+
+A GeoJSON map may carry its own crossings beside its features, `"links": [["a", "b"], ...]`
+(place ids or names): bridges, tunnels and ferries between places that share no border. They
+are added before a place with no neighbour is joined to its nearest two, so an island reached
+by a bridge is joined only there.
 
 A run can write a **viewer** (`--map DIR`): `index.html` replays the game over the basemap
 from snapshots kept every `sample_every` days, `style.json` is a MapLibre style with the game's

@@ -1,6 +1,6 @@
 #!/bin/sh
 # Builds Lilienstern's games for Wavedash (https://wavedash.com) and uploads each as a new build:
-#   sh tools/wavedash.sh [game]     gangland-bologna, gangland-milano, gangland-roma, marches or italia
+#   sh tools/wavedash.sh [game]     gangland-bologna, gangland-milano, gangland-roma, gangland-newyork, marches or italia
 # Each game is its own Wavedash game, configured in wavedash/<game>/wavedash.toml. This builds the
 # engine and the site as the Pages workflow does (tools/site.py), then copies the game's folder
 # into wavedash/<game>/build/ (its page, the engine, its files, its icons and their licence
@@ -12,7 +12,7 @@
 # in the game's wavedash.toml. Pushing all, a game with no id yet (game_id = "SET-ME") is skipped.
 set -e
 cd "$(dirname "$0")/.."
-GAMES="gangland-bologna gangland-milano gangland-roma marches italia"
+GAMES="gangland-bologna gangland-milano gangland-roma gangland-newyork marches italia"
 DOCS=https://ingmmo.com/lilienstern
 only=${1:-all}
 case " all $GAMES " in

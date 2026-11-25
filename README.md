@@ -20,8 +20,9 @@ or cheaper.
 **[Play Gangland: Bologna](https://ingmmo.com/lilienstern/gangland-bologna/)**: run a gang in
 Bologna's 2,606 census sections (or its 90 areas), raise crews and learn the trade, in your browser;
 or in **[Milano](https://ingmmo.com/lilienstern/gangland-milano/)** (7,095 census sections, or its 88
-NIL) and **[Roma](https://ingmmo.com/lilienstern/gangland-roma/)** (4,200 blocks, or its 155 zone
-urbanistiche, with the Tiber crossed at its bridges). **[Play Marches](https://ingmmo.com/lilienstern/marches/)**:
+NIL) **[Roma](https://ingmmo.com/lilienstern/gangland-roma/)** (4,200 blocks, or its 155 zone
+urbanistiche, with the Tiber crossed at its bridges) and **[New York](https://ingmmo.com/lilienstern/gangland-newyork/)**
+(2,325 census tracts, or its 262 neighbourhoods, the boroughs joined by their bridges, tunnels and ferry). **[Play Marches](https://ingmmo.com/lilienstern/marches/)**:
 rule a realm, raise troops and march them to war, medieval or futuristic.
 **[Play Italia](https://ingmmo.com/lilienstern/italia/)**: lead a noble family (Savoia, Visconti,
 Medici, Este, Aragona...) across ISTAT's Italy of 1871, on real mountains and plains, with
@@ -194,7 +195,7 @@ publishes both crates, with no stored token (crates.io trusted publishing).
 | `crates/lilienstern` | The engine: maps (generated or GeoJSON), games, factions, scripts, the AI, control, troops, metrics, experiments. |
 | `crates/lilienstern-cli` | The `lilienstern` command. |
 | `crates/lilienstern-web` | The engine as WebAssembly, driven by JSON messages, for the browser. |
-| `web/gangland-bologna`, `web/gangland-milano`, `web/gangland-roma`, `web/marches`, `web/italia` | The browser games: one page (`web/marches/app.js`), set up by each game's start screen (`window.GAME`: its files, words, resources, views and map). `tools/site.py` builds the site (docs and games). |
+| `web/gangland-bologna`, `web/gangland-milano`, `web/gangland-roma`, `web/gangland-newyork`, `web/marches`, `web/italia` | The browser games: one page (`web/marches/app.js`), set up by each game's start screen (`window.GAME`: its files, words, resources, views and map). `tools/site.py` builds the site (docs and games). |
 
 ## License
 
@@ -205,7 +206,7 @@ packs and are licensed separately (see [their README](web/marches/icons/README.m
 
 Each game is its own game on [Wavedash](https://wavedash.com) ([docs](https://docs.wavedash.com)),
 configured in `wavedash/<game>/wavedash.toml`: `gangland-bologna`, `gangland-milano`, `gangland-roma`,
-`marches` and `italia`.
+`gangland-newyork`, `marches` and `italia`.
 
 1. **Create the game** in the Wavedash Developer Portal, or with the CLI (`curl -fsSL
    https://wavedash.com/cli/install.sh | sh`, `wavedash auth login`, then `wavedash project create
@@ -213,8 +214,8 @@ configured in `wavedash/<game>/wavedash.toml`: `gangland-bologna`, `gangland-mil
 2. **Set its id**: `game_id` in its `wavedash.toml`, or, to keep it out of the repository,
    `WAVEDASH_GAME_ID_<GAME>` in the environment and as a repository variable (Settings › Secrets and
    variables › Actions › Variables): `WAVEDASH_GAME_ID_GANGLAND_BOLOGNA`,
-   `WAVEDASH_GAME_ID_GANGLAND_MILANO`, `WAVEDASH_GAME_ID_GANGLAND_ROMA`, `WAVEDASH_GAME_ID_MARCHES`,
-   `WAVEDASH_GAME_ID_ITALIA`. Gangland: Milano and Roma have `game_id = "SET-ME"` until then;
+   `WAVEDASH_GAME_ID_GANGLAND_MILANO`, `WAVEDASH_GAME_ID_GANGLAND_ROMA`,
+   `WAVEDASH_GAME_ID_GANGLAND_NEWYORK`, `WAVEDASH_GAME_ID_MARCHES`, `WAVEDASH_GAME_ID_ITALIA`. Gangland: Milano and Roma have `game_id = "SET-ME"` until then;
    pushing all, a game without an id is skipped.
 3. **Upload a build**: `sh tools/wavedash.sh [game]` builds the engine and the site as the Pages
    workflow does, copies the game's folder into `wavedash/<game>/build/` (links to the documentation

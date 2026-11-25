@@ -158,9 +158,9 @@ fn plays_on_a_real_map_and_writes_a_viewer() {
     assert_eq!(ids.last(), Some(&"lilienstern-line"));
 }
 
-/// A real city's two maps (`tools/milano.py`, `tools/roma.py`): every place is kept (one
+/// A real city's two maps (`tools/milano.py`, `tools/roma.py`, `tools/newyork.py`): every place is kept (one
 /// connected city), the residents add up, wealth is on Bologna's scale, and gangs play on it.
-fn plays_a_city(city: &str, areas: usize, sections: usize, residents: (f64, f64)) {
+fn plays_a_city(city: &str, areas: usize, sections: usize, residents: (f64, f64), source: &str) {
     for (file, places, days) in [("areas", areas, 60), ("sections", sections, 8)] {
         let g = small(&[
             ("city_file", &format!("maps/{city}-{file}.geojson")),
@@ -169,7 +169,7 @@ fn plays_a_city(city: &str, areas: usize, sections: usize, residents: (f64, f64)
         ]);
         let mut w = World::new(&g, 5).unwrap();
         assert_eq!(w.city.len(), places, "{city}-{file}");
-        assert!(w.city.imported && w.city.attribution.as_deref().unwrap().contains("ISTAT"));
+        assert!(w.city.imported && w.city.attribution.as_deref().unwrap().contains(source));
         let pop: f64 = (0..w.city.len())
             .map(|p| w.city.field(p, "population"))
             .sum();
@@ -192,12 +192,18 @@ fn plays_a_city(city: &str, areas: usize, sections: usize, residents: (f64, f64)
 
 #[test]
 fn plays_on_milano() {
-    plays_a_city("milano", 88, 7095, (1.3e6, 1.45e6));
+    plays_a_city("milano", 88, 7095, (1.3e6, 1.45e6), "ISTAT");
 }
 
 #[test]
 fn plays_on_roma() {
-    plays_a_city("roma", 155, 4200, (2.7e6, 2.8e6));
+    plays_a_city("roma", 155, 4200, (2.7e6, 2.8e6), "ISTAT");
+}
+
+#[test]
+fn plays_on_new_york() {
+    // Islands joined at their bridges, tunnels and ferry: the map's links keep every tract.
+    plays_a_city("newyork", 262, 2325, (8.4e6, 8.6e6), "Census Bureau");
 }
 
 #[test]

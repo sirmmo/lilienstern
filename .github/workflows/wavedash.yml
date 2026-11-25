@@ -11,7 +11,7 @@ on:
       game:
         description: Game to upload
         type: choice
-        options: [all, gangland-bologna, gangland-milano, gangland-roma, marches, italia]
+        options: [all, gangland-bologna, gangland-milano, gangland-roma, gangland-newyork, marches, italia]
         default: all
 
 permissions:
@@ -48,5 +48,6 @@ jobs:
           WAVEDASH_GAME_ID_GANGLAND_BOLOGNA: ${{ vars.WAVEDASH_GAME_ID_GANGLAND_BOLOGNA }}
           WAVEDASH_GAME_ID_GANGLAND_MILANO: ${{ vars.WAVEDASH_GAME_ID_GANGLAND_MILANO }}
           WAVEDASH_GAME_ID_GANGLAND_ROMA: ${{ vars.WAVEDASH_GAME_ID_GANGLAND_ROMA }}
+          WAVEDASH_GAME_ID_GANGLAND_NEWYORK: ${{ vars.WAVEDASH_GAME_ID_GANGLAND_NEWYORK }}
           WAVEDASH_GAME_ID_MARCHES: ${{ vars.WAVEDASH_GAME_ID_MARCHES }}
           WAVEDASH_GAME_ID_ITALIA: ${{ vars.WAVEDASH_GAME_ID_ITALIA }}

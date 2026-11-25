@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Builds Lilienstern's web site: the documentation and the playable games (Gangland: Bologna,
-Milano and Roma, Marches, Italia).
+Milano, Roma and New York, Marches, Italia).
 
     cargo build --release --target wasm32-unknown-unknown -p lilienstern-web
     python3 tools/site.py [--out site] [--wasm target/wasm32-unknown-unknown/release/lilienstern_web.wasm]
@@ -27,7 +27,7 @@ PAGES = [
 ]
 LINKS = {src: out for src, out, _ in PAGES}
 # Gangland's cities: the page (web/gangland-<city>) and its maps (games/gangland/maps/<city>-*).
-GANGLAND = [("bologna", "Bologna"), ("milano", "Milano"), ("roma", "Roma")]
+GANGLAND = [("bologna", "Bologna"), ("milano", "Milano"), ("roma", "Roma"), ("newyork", "New York")]
 
 TEMPLATE = """<!doctype html>
 <html lang="en">

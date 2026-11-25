@@ -386,11 +386,16 @@ def geometry(polys, to_lonlat):
     return {"type": "MultiPolygon", "coordinates": out}
 
 
-def write(name, features, attribution):
+def write(name, features, attribution, links=None):
+    """Writes the map; `links` ([[id, id], ...]) are extra borders between places by their `id`
+    (bridges, tunnels, ferries), which Lilienstern adds to the shared-vertex ones."""
     path = os.path.join(OUT, name)
+    doc = {"type": "FeatureCollection", "attribution": attribution}
+    if links:
+        doc["links"] = links
+    doc["features"] = features
     with open(path, "w") as f:
-        json.dump({"type": "FeatureCollection", "attribution": attribution, "features": features}, f,
-                  separators=(",", ":"), ensure_ascii=False)
+        json.dump(doc, f, separators=(",", ":"), ensure_ascii=False)
     print(f"{name}: {len(features)} places, {sum(x['properties']['population'] for x in features):,} residents, "
           f"{os.path.getsize(path) / 1e6:.1f} MB")
 
@@ -573,15 +578,21 @@ def mef_income(rows):
     return out
 
 
-def check(features):
+def check(features, links=()):
     """Counts the groups of places as Lilienstern will see them (outer rings of the written
-    coordinates, two shared vertices): a map must be one group, or places get dropped."""
+    coordinates, two shared vertices, and the map's `links`): a map must be one group, or places
+    get dropped."""
     shapes = []
     for f in features:
         g = f["geometry"]
         polys = [g["coordinates"]] if g["type"] == "Polygon" else g["coordinates"]
         shapes.append([[[tuple(round(c * 1e6) for c in p) for p in poly[0]]] for poly in polys])
-    comps = components(neighbours(shapes))
+    nb = neighbours(shapes)
+    index = {f["properties"]["id"]: i for i, f in enumerate(features)}
+    for a, b in links:
+        nb[index[a]].add(index[b])
+        nb[index[b]].add(index[a])
+    comps = components(nb)
     lonely = sum(1 for c in comps if len(c) == 1)
     print(f"  {len(comps[0])} places joined; {len(comps) - 1 - lonely} cut-off groups ({sum(len(c) for c in comps[1:]) - lonely} places), "
           f"{lonely} places with no neighbour (joined to their nearest two)")

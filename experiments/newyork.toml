@@ -1,0 +1,27 @@
+name = "Policing in New York"
+question = "Do the policing results hold on New York, five boroughs on islands joined by bridges?"
+description = """
+Gangland on New York's 2,325 census tracts (2020), with each tract's wealth from its median
+household income and its residents from the American Community Survey 2019-2023 (see
+`games/gangland/maps`); the rivers are crossed at the bridges, the tunnels and the Staten Island
+Ferry. Gangs start in the poorer tracts. Open `maps/<variant>/index.html` to replay a game over
+OpenStreetMap.
+"""
+game = "../games/gangland"
+days = 730
+seeds = 8
+report = ["violence", "hotspots", "hotspot_places", "captures", "held", "top_share", "m.Raids", "m.Sales", "map.Police"]
+
+[set]
+city_file = "maps/newyork-sections.geojson"
+
+[[variant]]
+name = "no police"
+set = { police_budget = 0 }
+
+[[variant]]
+name = "hot spots"
+
+[[variant]]
+name = "rich districts"
+set = { police_w_flat = 0.2, police_w_violence = 0.0, police_w_heat = 0.0, police_w_wealth = 1.0 }

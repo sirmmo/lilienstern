@@ -1,9 +1,9 @@
 # Maps
 
-Real maps for Gangland: Bologna, Milano and Roma, each cut two ways, into large areas and small
+Real maps for Gangland: Bologna, Milano, Roma and New York, each cut two ways, into large areas and small
 blocks. Every place has `population`, `income` and `wealth` (income scaled 5 to 95 between the
 5th and 95th percentile of the city's areas, clamped to 2..100); sections and blocks get the
-income of their area.
+income of their area (New York's tracts have their own).
 
 | File | Places | |
 |---|---:|---|
@@ -16,19 +16,25 @@ income of their area.
 | `roma-areas.geojson` | 155 | the zone urbanistiche, with their census residents and income |
 | `roma-sections.geojson` | 4,200 | blocks: the census sections (2021) grouped within their zone, with their census residents and the income of their zone |
 | `roma.style.json` | 155 | the zone urbanistiche over OpenStreetMap |
+| `newyork-areas.geojson` | 262 | the Neighborhood Tabulation Areas (2020), with their residents and median household income |
+| `newyork-sections.geojson` | 2,325 | census tracts (2020), with their own residents and median household income |
+| `newyork.style.json` | 262 | the neighbourhoods over OpenStreetMap |
 
 ```sh
 lilienstern run games/gangland --set city_file=maps/bologna-sections.geojson --map out/bologna
 lilienstern run games/gangland --set city_file=maps/bologna.style.json --set gangs=4 --map out/bologna-areas
 lilienstern run games/gangland --set city_file=maps/milano-areas.geojson --map out/milano
 lilienstern run games/gangland --set city_file=maps/roma-sections.geojson --map out/roma
+lilienstern run games/gangland --set city_file=maps/newyork-sections.geojson --map out/newyork
 ```
 
 Any GeoJSON of polygons works: polygons sharing a border are neighbours, numeric properties
 become fields (`wealth`, `density`, `population` are used by Gangland's maps; missing ones are
 made up from the distance to the centre, as in a generated city). Gangland's `radius_km`,
 `river`, `bridges` and `city_seed` shape only a generated city: on a real map the city is the
-map, and a river is in the data (Rome's, below).
+map, and a river is in the data (Rome's, below). A map can carry its own crossings beside its
+features, `"links": [["id", "id"], ...]` (place ids or names): bridges, tunnels and ferries
+between places that share no border (New York's, below).
 
 ## Bologna
 
@@ -90,7 +96,38 @@ Ministry of Economy and Finance.
 * Martignano, Rome's exclave by Lake Martignano, borders nothing else in the city: Lilienstern
   joins it to its two nearest places.
 
-The Milan and Rome scripts share `tools/citymaps.py`: reading ISTAT's shapefiles, the projection
+## New York
+
+Rebuild them with `python3 tools/newyork.py [download-dir]` (standard library only; it downloads
+about 47 MB).
+
+| Data | Source | Licence |
+|---|---|---|
+| 2020 census tracts, clipped to the shoreline, with their Neighborhood Tabulation Area | NYC Department of City Planning, [2020 Census Tracts](https://data.cityofnewyork.us/d/63ge-mke6) (NYC Open Data) | NYC Open Data [terms of use](https://www.nyc.gov/home/terms-of-use.page) |
+| The NTAs' types (residential, park, cemetery, airport, ...) | NYC Department of City Planning, [2020 Neighborhood Tabulation Areas](https://data.cityofnewyork.us/d/9nt8-h7nd) (NYC Open Data) | as above |
+| Residents (B01003) and median household income (B19013) per tract | US Census Bureau, [American Community Survey 2019-2023 5-year estimates](https://www2.census.gov/programs-surveys/acs/summary_file/2023/table-based-SF/), table-based summary file | public domain (a US government work) |
+
+* **Sections**: the 2,325 tracts, simplified by 3 m. `population` is the survey's estimate
+  (8,516,202 in all); `income` is the tract's own median household income in 2023 dollars
+  (2,192 tracts have one); tracts without one (parks, airports, cemeteries, tracts too small
+  for the survey) take their area's.
+* **Areas**: the 262 NTAs, each the union of its tracts (NYC's NTAs are built from tracts), so
+  both maps agree. An area's `income` is its tracts' medians weighted by their residents; the
+  areas nobody lives in (Central Park, JFK and LaGuardia, Rikers Island, the cemeteries) take
+  their neighbours'. The wealth scale runs over the residential areas: from the South Bronx
+  (about $30,000) to Tribeca (about $220,000). `land_use` and `borough` come with them.
+* **The water**: the tracts end at the shore, so the East River, the Harlem River, the Narrows
+  and Jamaica Bay are gaps. The boroughs meet on land (Brooklyn and Queens; the Bronx and
+  Marble Hill) and where the tracts touch near the East River crossings (the Brooklyn,
+  Manhattan, Williamsburg and Queensboro bridges, the tunnels). The other crossings are the
+  map's `links`, each between the two tracts nearest its ends (`CROSSINGS` in the script): the
+  seven Harlem River bridges, the Triborough's three arms, the Whitestone and Throgs Neck
+  bridges, the Verrazzano, the Marine Parkway and Cross Bay bridges to the Rockaways, the City
+  Island Bridge and the Staten Island Ferry. Hart Island, Hoffman and Swinburne Islands and the
+  Statue of Liberty's islands join their nearest place across the water. The areas' map has the
+  same crossings, between the areas of those tracts.
+
+The Milan, Rome and New York scripts share `tools/citymaps.py`: reading ISTAT's shapefiles, the projection
 from UTM 32N, a simplification that keeps shared borders shared, unions of polygons, and the
 postcodes. A hole is joined to its outer ring by a slit (a keyhole polygon), so that a place
 inside another shares vertices with it and is its neighbour. Coordinates are rounded to 5

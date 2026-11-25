@@ -725,10 +725,11 @@ mod tests {
     }
 
     #[test]
-    fn a_player_plays_a_gang_on_milano_and_roma() {
+    fn a_player_plays_a_gang_on_milano_roma_and_new_york() {
         for (map, places) in [
             ("maps/milano-areas.geojson", 88),
             ("maps/roma-areas.geojson", 155),
+            ("maps/newyork-areas.geojson", 262),
         ] {
             let params = json!({ "city_file": map, "gangs": 6, "crews": "crews.toml" });
             let info = handle(&json!({ "op": "new", "files": gangland(map), "params": params, "seed": 4, "player": "gang1" })).unwrap();

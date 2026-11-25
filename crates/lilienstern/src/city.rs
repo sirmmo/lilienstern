@@ -717,6 +717,34 @@ pub fn from_value(json: &serde_json::Value, def: &CityDef, seed: u64) -> Result<
         imported: true,
         attribution: json["attribution"].as_str().map(str::to_string),
     };
+    // The map's own crossings (bridges, tunnels, ferries): `"links": [[a, b], ...]` beside the
+    // features, by place id or name.
+    if let Some(links) = json["links"].as_array() {
+        for link in links {
+            let pair = link.as_array().filter(|l| l.len() == 2);
+            let ends: Option<Vec<usize>> = pair.map(|l| {
+                l.iter()
+                    .filter_map(|v| {
+                        let key = v
+                            .as_str()
+                            .map(str::to_string)
+                            .or_else(|| v.as_i64().map(|n| n.to_string()))?;
+                        city.places
+                            .iter()
+                            .position(|p| p.id == key)
+                            .or_else(|| city.places.iter().position(|p| p.name == key))
+                    })
+                    .collect()
+            });
+            match ends.as_deref() {
+                Some(&[a, b]) if a != b => {
+                    city.neighbours[a].push(b);
+                    city.neighbours[b].push(a);
+                }
+                _ => return Err(format!("links: {link} does not name two places of the map")),
+            }
+        }
+    }
     for i in 0..city.len() {
         if city.neighbours[i].is_empty() {
             let mut near: Vec<usize> = (0..city.len()).filter(|&j| j != i).collect();
@@ -824,6 +852,14 @@ mod tests {
         let e = c.places.iter().position(|p| p.name == "E").unwrap();
         assert_eq!(c.neighbours[e].len(), 2); // joined to its nearest
         assert!(c.places[a].fields["density"] > 0.0);
+        // A map's own links (a bridge to E) are borders, by id or name.
+        let linked = text.replacen(r#""features""#, r#""links":[["A","E"]],"features""#, 1);
+        let c = from_geojson(&linked, &def(1)).unwrap();
+        let e = c.places.iter().position(|p| p.name == "E").unwrap();
+        let a = c.places.iter().position(|p| p.name == "A").unwrap();
+        assert_eq!(c.neighbours[e], vec![a]); // the bridge, not its nearest two
+        let bad = text.replacen(r#""features""#, r#""links":[["A","Z"]],"features""#, 1);
+        assert!(from_geojson(&bad, &def(1)).is_err());
         let ll = c.lonlat(c.places[a].centre);
         assert!(
             (ll[0] - 11.005).abs() < 1e-3 && (ll[1] - 44.005).abs() < 1e-3,

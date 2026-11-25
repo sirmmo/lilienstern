@@ -178,6 +178,25 @@ a move does not bring them together in two years. Violence is a twentieth of Bol
 for eight seeds to tell the policies apart: the spatial unit decides again (see Neighbourhood
 size): on Milan's 88 NIL the gangs hold the whole city, and fight over it, within four months.
 
+### Policing in New York (`experiments/newyork.toml`)
+
+The same question on New York's 2,325 census tracts, with each tract's own median household
+income, and the boroughs joined only at their bridges, tunnels and the Staten Island Ferry; 8
+seeds.
+
+| New York | no police | hot spots | rich districts |
+|---|---:|---:|---:|
+| `violence` | 3955 ± 1643 | 2383 ± 573 | 3725 ± 1118 |
+| `hotspot_places` | 179 ± 66 | 146 ± 35 | 168 ± 37 |
+| `captures` | 154 ± 61 | 95 ± 26 | 153 ± 43 |
+| `held` | 0.33 | 0.30 | 0.31 |
+| `m.Raids` | 0 | 81 ± 13 | 46 ± 9 |
+
+The result holds again: hot spots cut violence by 40% and captures by 38%, while guarding the
+rich districts changes neither beyond the spread of the seeds. New York's poor tracts lie
+close together (the South Bronx, Harlem, central Brooklyn), so the gangs meet early, as in Rome
+and unlike Milan, and they hold a third of the city after two years.
+
 ## Marches' experiment
 
 ### Alliances and eras (`experiments/marches.toml`)

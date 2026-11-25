@@ -5,3 +5,4 @@
 /tools/.cache
 /wavedash/*/build/
 __pycache__/
+/*-data/
