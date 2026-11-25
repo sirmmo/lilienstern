@@ -198,7 +198,11 @@ Real neighbourhoods (from OpenStreetMap, a city's statistical areas, or OHM/OFM 
 and fictional maps) work through the import: set `geojson = "file.geojson"` in `[city]`. A
 MapLibre style works too: its GeoJSON source is the map and the style is drawn under the game.
 Gangland ships Bologna's 90 statistical areas and 2,606 census sections, with income and
-residents from the city's open data (`tools/bologna.py`).
+residents from the city's open data (`tools/bologna.py`); Milan's 88 NIL and 7,095 census
+sections (`tools/milano.py`); and Rome's 155 zone urbanistiche and 4,200 blocks of census
+sections, with the Tiber crossed at its bridges (`tools/roma.py`). Milan and Rome have their
+residents from ISTAT's 2021 census and their income from the IRPEF returns per postcode (see
+[the maps](../games/gangland/maps/README.md)).
 
 A run can write a **viewer** (`--map DIR`): `index.html` replays the game over the basemap
 from snapshots kept every `sample_every` days, `style.json` is a MapLibre style with the game's
@@ -229,7 +233,8 @@ change to the rules or the engine, or every online game would fall out of step. 
 version had the host's browser as the room, over PeerJS and WebRTC: games died with the host's
 tab, and browsers behind some routers could not reach each other.)
 
-The browser game (`web/gangland-bologna`) runs the engine as WebAssembly. `lilienstern-web`
+The browser games (`web/gangland-bologna`, `-milano`, `-roma`, and Marches and Italia) run the
+engine as WebAssembly. `lilienstern-web`
 exposes three functions with no generated glue: the page writes a JSON request into the
 module's memory, calls `lil_call`, and reads the JSON answer (`new`, `state`, `place`,
 `options`, `take`, `step`, `summary`). Games load from files in memory (`Game::from_files`), so

@@ -1,0 +1,26 @@
+name = "Policing in Milano"
+question = "Do the policing results hold on Milan, a larger city of 7,095 census sections?"
+description = """
+Gangland on Milan's 2021 census sections, with each section's wealth from the income declared in
+the postcodes of its NIL and its residents from the 2021 census (see `games/gangland/maps`).
+Gangs start in the poorer sections. Open `maps/<variant>/index.html` to replay a game over
+OpenStreetMap.
+"""
+game = "../games/gangland"
+days = 730
+seeds = 8
+report = ["violence", "hotspots", "hotspot_places", "captures", "held", "top_share", "m.Raids", "m.Sales", "map.Police"]
+
+[set]
+city_file = "maps/milano-sections.geojson"
+
+[[variant]]
+name = "no police"
+set = { police_budget = 0 }
+
+[[variant]]
+name = "hot spots"
+
+[[variant]]
+name = "rich districts"
+set = { police_w_flat = 0.2, police_w_violence = 0.0, police_w_heat = 0.0, police_w_wealth = 1.0 }

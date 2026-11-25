@@ -1,6 +1,6 @@
 #!/bin/sh
 # Builds Lilienstern's games for Wavedash (https://wavedash.com) and uploads each as a new build:
-#   sh tools/wavedash.sh [game]     gangland-bologna, marches or italia
+#   sh tools/wavedash.sh [game]     gangland-bologna, gangland-milano, gangland-roma, marches or italia
 # Each game is its own Wavedash game, configured in wavedash/<game>/wavedash.toml. This builds the
 # engine and the site as the Pages workflow does (tools/site.py), then copies the game's folder
 # into wavedash/<game>/build/ (its page, the engine, its files, its icons and their licence
@@ -9,10 +9,10 @@
 # environment); without it, or with WAVEDASH_DRY_RUN=1, it only says what it would push.
 # Publishing a build is a separate step. The game id: WAVEDASH_GAME_ID_<GAME> (e.g.
 # WAVEDASH_GAME_ID_GANGLAND_BOLOGNA), else WAVEDASH_GAME_ID when pushing one game, else game_id
-# in the game's wavedash.toml.
+# in the game's wavedash.toml. Pushing all, a game with no id yet (game_id = "SET-ME") is skipped.
 set -e
 cd "$(dirname "$0")/.."
-GAMES="gangland-bologna marches italia"
+GAMES="gangland-bologna gangland-milano gangland-roma marches italia"
 DOCS=https://ingmmo.com/lilienstern
 only=${1:-all}
 case " all $GAMES " in
@@ -58,7 +58,11 @@ push() {
   msg=${WAVEDASH_MESSAGE:-"$slug $(git rev-parse --short HEAD 2>/dev/null || echo local)"}
   size=$(du -sh "$build" | cut -f1)
   if command -v wavedash >/dev/null 2>&1 && [ -z "${WAVEDASH_DRY_RUN:-}" ]; then
-    case $id in '' | SET-ME) echo "$slug: no Wavedash game id: set $(id_var "$slug") or game_id in $conf/wavedash.toml" >&2; exit 1 ;; esac
+    case $id in '' | SET-ME)
+      echo "$slug: no Wavedash game id: set $(id_var "$slug") or game_id in $conf/wavedash.toml" >&2
+      [ "$only" = all ] && { echo "$slug: skipped" >&2; return 0; }
+      exit 1 ;;
+    esac
     [ -n "${WAVEDASH_TOKEN:-}" ] || echo "$slug: WAVEDASH_TOKEN is not set; the CLI uses its own login, if any" >&2
     echo "$slug: pushing $build ($size) to Wavedash game $id"
     (cd "$conf" && WAVEDASH_GAME_ID=$id wavedash build push -m "$msg")

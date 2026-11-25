@@ -1,0 +1,27 @@
+name = "Policing in Roma"
+question = "Do the policing results hold on Rome, a city of 1,287 km² cut by the Tiber?"
+description = """
+Gangland on Rome's 2021 census sections grouped into 4,200 blocks, with each block's wealth from the
+income declared in the postcodes of its zona urbanistica and its residents from the 2021 census
+(see `games/gangland/maps`); the Tiber and the Aniene are crossed at the bridges.
+Gangs start in the poorer blocks. Open `maps/<variant>/index.html` to replay a game over
+OpenStreetMap.
+"""
+game = "../games/gangland"
+days = 730
+seeds = 8
+report = ["violence", "hotspots", "hotspot_places", "captures", "held", "top_share", "m.Raids", "m.Sales", "map.Police"]
+
+[set]
+city_file = "maps/roma-sections.geojson"
+
+[[variant]]
+name = "no police"
+set = { police_budget = 0 }
+
+[[variant]]
+name = "hot spots"
+
+[[variant]]
+name = "rich districts"
+set = { police_w_flat = 0.2, police_w_violence = 0.0, police_w_heat = 0.0, police_w_wealth = 1.0 }

@@ -150,6 +150,34 @@ districts does nothing: in Bologna the gangs start and fight in the poorer secti
 the hill and the centre. With small sections and one section per move, gangs hold only a
 quarter of the city after two years.
 
+### Policing in Milano and Roma (`experiments/milano.toml`, `experiments/roma.toml`)
+
+The same question on Milan's 7,095 census sections and on Rome's 4,200 blocks (census sections
+grouped within their zona urbanistica, with the Tiber crossed at its bridges), 8 seeds each.
+
+| Milano | no police | hot spots | rich districts |
+|---|---:|---:|---:|
+| `violence` | 164 ± 283 | 32 ± 75 | 143 ± 334 |
+| `hotspot_places` | 5 ± 10 | 4 ± 11 | 7 ± 12 |
+| `captures` | 6 ± 11 | 0.5 ± 1.4 | 1.5 ± 2.8 |
+| `held` | 0.13 | 0.12 | 0.13 |
+| `m.Raids` | 0 | 6 ± 8 | 5 ± 5 |
+
+| Roma | no police | hot spots | rich districts |
+|---|---:|---:|---:|
+| `violence` | 3430 ± 964 | 1347 ± 772 | 2411 ± 1104 |
+| `hotspot_places` | 189 ± 63 | 100 ± 59 | 140 ± 56 |
+| `captures` | 102 ± 46 | 47 ± 28 | 80 ± 43 |
+| `held` | 0.18 | 0.17 | 0.18 |
+| `m.Raids` | 0 | 72 ± 21 | 39 ± 10 |
+
+In Rome the result holds: hot spots cut violence by 60%, guarding the rich districts by less
+and within the spread of the seeds. In Milan the gangs hardly meet: the poorer sections, where
+they start, lie far apart at the edges of a city cut into 7,095 small sections, and one section
+a move does not bring them together in two years. Violence is a twentieth of Bologna's, too rare
+for eight seeds to tell the policies apart: the spatial unit decides again (see Neighbourhood
+size): on Milan's 88 NIL the gangs hold the whole city, and fight over it, within four months.
+
 ## Marches' experiment
 
 ### Alliances and eras (`experiments/marches.toml`)

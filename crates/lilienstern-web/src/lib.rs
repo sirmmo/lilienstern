@@ -514,6 +514,11 @@ mod tests {
     use super::*;
 
     fn files() -> Value {
+        gangland("maps/bologna-areas.geojson")
+    }
+
+    /// Gangland's files, with one map, as a page hands them over.
+    fn gangland(map: &str) -> Value {
         let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../../games/gangland/");
         let mut m = serde_json::Map::new();
         for f in [
@@ -521,7 +526,9 @@ mod tests {
             "game.toml",
             "economy.gbx",
             "politics.lil",
-            "maps/bologna-areas.geojson",
+            "crews.toml",
+            "crews.lil",
+            map,
         ] {
             m.insert(
                 f.into(),
@@ -715,6 +722,25 @@ mod tests {
         // A player who leaves: the AI takes the faction back.
         let left = handle(&json!({ "op": "release", "faction": 2 })).unwrap();
         assert_eq!(left["players"], json!([0]));
+    }
+
+    #[test]
+    fn a_player_plays_a_gang_on_milano_and_roma() {
+        for (map, places) in [
+            ("maps/milano-areas.geojson", 88),
+            ("maps/roma-areas.geojson", 155),
+        ] {
+            let params = json!({ "city_file": map, "gangs": 6, "crews": "crews.toml" });
+            let info = handle(&json!({ "op": "new", "files": gangland(map), "params": params, "seed": 4, "player": "gang1" })).unwrap();
+            assert_eq!(info["places"], places, "{map}");
+            let later = handle(&json!({ "op": "step", "days": 15, "map": 0 })).unwrap();
+            assert_eq!(later["day"], 15);
+            let wealth = later["values"].as_array().unwrap();
+            assert_eq!(wealth.len(), places);
+            assert!(wealth
+                .iter()
+                .all(|v| (0.0..=100.0).contains(&v.as_f64().unwrap())));
+        }
     }
 
     #[test]

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Builds Lilienstern's web site: the documentation and the playable games (Gangland: Bologna,
-Marches).
+Milano and Roma, Marches, Italia).
 
     cargo build --release --target wasm32-unknown-unknown -p lilienstern-web
     python3 tools/site.py [--out site] [--wasm target/wasm32-unknown-unknown/release/lilienstern_web.wasm]
@@ -26,6 +26,8 @@ PAGES = [
     ("games/italia/maps/README.md", "italia-maps.html", "Italia's maps"),
 ]
 LINKS = {src: out for src, out, _ in PAGES}
+# Gangland's cities: the page (web/gangland-<city>) and its maps (games/gangland/maps/<city>-*).
+GANGLAND = [("bologna", "Bologna"), ("milano", "Milano"), ("roma", "Roma")]
 
 TEMPLATE = """<!doctype html>
 <html lang="en">
@@ -97,7 +99,8 @@ def nav(current):
     for _, out, title in PAGES[1:]:
         items.append(f'<a href="{out}"{" class=on" if out == current else ""}>{title}</a>')
     items.append(f'<a href="{REPO}">GitHub</a>')
-    items.append('<a class="play push" href="gangland-bologna/">Play Gangland: Bologna</a>')
+    for k, (city, name) in enumerate(GANGLAND):
+        items.append(f'<a class="play{" push" if k == 0 else ""}" href="gangland-{city}/">Play Gangland: {name}</a>')
     items.append('<a class="play" href="marches/">Play Marches</a>')
     items.append('<a class="play" href="italia/">Play Italia</a>')
     return "".join(items)
@@ -123,22 +126,23 @@ def main():
     shutil.copy(os.path.join(ROOT, "docs", "gangland.png"), out)
 
     # Gangland is the Marches page (app.js, net.js, app.css, icons) with its own start screen and
-    # its crews' portraits.
-    play = os.path.join(out, "gangland-bologna")
-    shutil.copytree(os.path.join(ROOT, "web", "marches"), play, ignore=shutil.ignore_patterns("index.html"))
-    shutil.copy(os.path.join(ROOT, "web", "gangland-bologna", "index.html"), play)
-    shutil.copytree(os.path.join(ROOT, "web", "gangland-bologna", "icons"), os.path.join(play, "icons"), dirs_exist_ok=True)
-    os.rename(os.path.join(play, "icons", "README.md"), os.path.join(play, "icons", "README-gangland.md"))
-    shutil.copy(os.path.join(ROOT, "web", "marches", "icons", "README.md"), os.path.join(play, "icons", "README.md"))
+    # its crews' portraits (web/gangland-bologna/icons, for every city), one page per city.
     if not os.path.exists(a.wasm):
         raise SystemExit(f"{a.wasm} is missing: build it with cargo build --release --target wasm32-unknown-unknown -p lilienstern-web")
-    shutil.copy(a.wasm, os.path.join(play, "lilienstern.wasm"))
-    game = os.path.join(play, "game")
-    os.makedirs(os.path.join(game, "maps"))
-    for f in ["params.toml", "game.toml", "economy.gbx", "politics.lil", "crews.toml", "crews.lil"]:
-        shutil.copy(os.path.join(ROOT, "games", "gangland", f), game)
-    for f in ["bologna-areas.geojson", "bologna-sections.geojson"]:
-        shutil.copy(os.path.join(ROOT, "games", "gangland", "maps", f), os.path.join(game, "maps"))
+    for city, _ in GANGLAND:
+        play = os.path.join(out, f"gangland-{city}")
+        shutil.copytree(os.path.join(ROOT, "web", "marches"), play, ignore=shutil.ignore_patterns("index.html"))
+        shutil.copy(os.path.join(ROOT, "web", f"gangland-{city}", "index.html"), play)
+        shutil.copytree(os.path.join(ROOT, "web", "gangland-bologna", "icons"), os.path.join(play, "icons"), dirs_exist_ok=True)
+        os.rename(os.path.join(play, "icons", "README.md"), os.path.join(play, "icons", "README-gangland.md"))
+        shutil.copy(os.path.join(ROOT, "web", "marches", "icons", "README.md"), os.path.join(play, "icons", "README.md"))
+        shutil.copy(a.wasm, os.path.join(play, "lilienstern.wasm"))
+        game = os.path.join(play, "game")
+        os.makedirs(os.path.join(game, "maps"))
+        for f in ["params.toml", "game.toml", "economy.gbx", "politics.lil", "crews.toml", "crews.lil"]:
+            shutil.copy(os.path.join(ROOT, "games", "gangland", f), game)
+        for f in [f"{city}-areas.geojson", f"{city}-sections.geojson"]:
+            shutil.copy(os.path.join(ROOT, "games", "gangland", "maps", f), os.path.join(game, "maps"))
 
     play = os.path.join(out, "marches")
     shutil.copytree(os.path.join(ROOT, "web", "marches"), play)

@@ -4,3 +4,4 @@
 /_site
 /tools/.cache
 /wavedash/*/build/
+__pycache__/

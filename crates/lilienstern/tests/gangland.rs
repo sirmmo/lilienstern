@@ -158,6 +158,48 @@ fn plays_on_a_real_map_and_writes_a_viewer() {
     assert_eq!(ids.last(), Some(&"lilienstern-line"));
 }
 
+/// A real city's two maps (`tools/milano.py`, `tools/roma.py`): every place is kept (one
+/// connected city), the residents add up, wealth is on Bologna's scale, and gangs play on it.
+fn plays_a_city(city: &str, areas: usize, sections: usize, residents: (f64, f64)) {
+    for (file, places, days) in [("areas", areas, 60), ("sections", sections, 8)] {
+        let g = small(&[
+            ("city_file", &format!("maps/{city}-{file}.geojson")),
+            ("crews", "crews.toml"),
+            ("gangs", "4"),
+        ]);
+        let mut w = World::new(&g, 5).unwrap();
+        assert_eq!(w.city.len(), places, "{city}-{file}");
+        assert!(w.city.imported && w.city.attribution.as_deref().unwrap().contains("ISTAT"));
+        let pop: f64 = (0..w.city.len())
+            .map(|p| w.city.field(p, "population"))
+            .sum();
+        assert!(
+            (residents.0..residents.1).contains(&pop),
+            "{city}-{file}: {pop} residents"
+        );
+        let wealth: Vec<f64> = (0..w.city.len())
+            .map(|p| w.city.field(p, "wealth"))
+            .collect();
+        assert!(wealth.iter().all(|x| (2.0..=100.0).contains(x)));
+        assert!(wealth.iter().any(|&x| x < 10.0) && wealth.iter().any(|&x| x > 90.0));
+        w.run(days);
+        let s = w.summary();
+        assert!(s["held"] > 0.0, "{city}-{file}: {s:?}");
+        let owned = w.owner.iter().filter(|o| o.is_some()).count();
+        assert!(owned >= 4, "{city}-{file}: gangs hold {owned} places");
+    }
+}
+
+#[test]
+fn plays_on_milano() {
+    plays_a_city("milano", 88, 7095, (1.3e6, 1.45e6));
+}
+
+#[test]
+fn plays_on_roma() {
+    plays_a_city("roma", 155, 4200, (2.7e6, 2.8e6));
+}
+
 #[test]
 fn crews_and_techs_are_a_choice() {
     // Without them (the experiments' Gangland), no troops and no techs.
