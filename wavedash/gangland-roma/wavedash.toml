@@ -3,6 +3,6 @@
 # `wavedash project create --title "Gangland: Roma" --team-id <TEAM_ID>`.
 # WAVEDASH_GAME_ID overrides it (the CLI reads it); tools/wavedash.sh also takes WAVEDASH_GAME_ID_GANGLAND_ROMA
 # (in CI, the repository variable of that name), so the id need not be committed.
-game_id = "SET-ME"
+game_id = "j97ff0r3pt7ta4e4at239qjzd18jwkne"
 upload_dir = "build"
 entrypoint = "index.html"
