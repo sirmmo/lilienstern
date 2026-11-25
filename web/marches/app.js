@@ -219,6 +219,7 @@ async function boot() {
   } catch (e) {
     $('startError').textContent = 'The engine did not start: ' + e.message;
   }
+  window.WavedashHook?.ready(); // on Wavedash: the start screen is ready (or says why not), show it
 }
 
 /** A fingerprint of the game's files, so that online players are sure to play the same game. */

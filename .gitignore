@@ -3,3 +3,4 @@
 /site
 /_site
 /tools/.cache
+/wavedash/*/build/
