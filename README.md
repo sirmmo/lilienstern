@@ -236,3 +236,15 @@ only accepts the pages in `LIL_ORIGINS`, matched exactly (with any port). Until 
 (`https://<subdomain>.builds.wavedashcdn.com`, seen in the browser once the game is up) is in
 `LIL_ORIGINS` (`deploy/server/stack.yml`), online games on Wavedash are refused; playing alone and
 on one screen work.
+
+## Publishing on itch.io
+
+The same builds go to [itch.io](https://itch.io) with
+[butler](https://itch.io/docs/butler/), each to its own page as an HTML5 build: `gangland-bologna` at https://sirmmo.itch.io/gangland-bologna, `gangland-milano` at https://sirmmo.itch.io/gangland-milano, `gangland-roma` at https://sirmmo.itch.io/gangland-roma, `gangland-newyork` at https://sirmmo.itch.io/gangland-new-york, `marches` at https://sirmmo.itch.io/marches, `italia` at https://sirmmo.itch.io/italia.
+`sh tools/itch.sh [game]` builds them as for Wavedash and runs `butler push <build>
+sirmmo/<page>:html5`; without butler, or with `ITCH_DRY_RUN=1`, it only says what it would push.
+In CI, Actions > Itch > Run workflow does the same, with the repository secret `BUTLER_API_KEY`
+(an API key from https://itch.io/user/settings/api-keys). Each page must exist on itch.io before
+its first push (Dashboard > Create new project, kind HTML); after the first upload, tick "This
+file will be played in the browser" on it once.
+
