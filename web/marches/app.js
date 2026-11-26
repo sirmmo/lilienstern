@@ -878,7 +878,8 @@ function battles() {
   battleMarkers = (st.fights || []).map((p) => {
     const el = document.createElement('div');
     el.className = 'battle';
-    el.textContent = '⚔';
+    // The pulse runs on an inner span: MapLibre places the marker element with its transform.
+    el.innerHTML = '<span>⚔</span>';
     return new maplibregl.Marker({ element: el, offset: [0, -22] }).setLngLat(centres[p]).addTo(map);
   });
 }
