@@ -36,11 +36,15 @@ pub fn pace_seconds(pace: &str) -> u64 {
 /// Messages to send: (connection, message).
 pub type Out = Vec<(u64, Value)>;
 
-/// Commands a player may ask for, and the fields each keeps.
-const OPS: [(&str, &[&str]); 3] = [
+/// Commands a player may ask for, and the fields each keeps: Lilienstern's games take
+/// decisions, order troops and research; OpenDorf, played in turns (a turn is a day here), lays
+/// its tile or throws it away.
+const OPS: [(&str, &[&str]); 5] = [
     ("take", &["decision", "place"]),
     ("order", &["troop", "to"]),
     ("research", &["tech"]),
+    ("lay", &["q", "r", "rot"]),
+    ("discard", &[]),
 ];
 
 /// The most commands a game may have (a long Italia game has about 20,000).
@@ -631,10 +635,25 @@ mod tests {
         r.end_day("guest", now, &mut out);
         assert_eq!(r.log.last().unwrap()["op"], "step");
         assert!(r.ready.is_empty());
+        // OpenDorf's moves, with only their own fields.
+        out.clear();
+        r.request(
+            2,
+            "guest",
+            &json!({ "op": "lay", "q": -2, "r": 1, "rot": 5, "feature": "x" }),
+            &mut out,
+        );
+        r.request(2, "guest", &json!({ "op": "discard" }), &mut out);
+        let cmds = of(&out, 1, "cmd");
+        assert_eq!(
+            cmds[0]["cmd"],
+            json!({ "op": "lay", "faction": 3, "q": -2, "r": 1, "rot": 5 })
+        );
+        assert_eq!(cmds[1]["cmd"], json!({ "op": "discard", "faction": 3 }));
         // ... or when the clock says so.
         out.clear();
         r.tick(now + Duration::from_secs(6), &mut out);
-        assert_eq!(of(&out, 1, "step")[0]["seq"], 3);
+        assert_eq!(of(&out, 1, "step")[0]["seq"], 5);
     }
 
     #[test]
