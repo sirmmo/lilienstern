@@ -7,7 +7,9 @@ services:
     image: ${LIL_IMAGE:-lilienstern-server:latest}
     environment:
       LIL_DATA: /data
-      LIL_ORIGINS: https://ingmmo.com,http://localhost,http://127.0.0.1
+      # The game's site, local tests, and the platforms the games are published on: Wavedash
+      # serves each game from a subdomain of builds.wavedashcdn.com, itch.io from itch.zone.
+      LIL_ORIGINS: https://ingmmo.com,http://localhost,http://127.0.0.1,https://*.builds.wavedashcdn.com,https://*.itch.zone
       LIL_VERSION: ${LIL_IMAGE:-lilienstern-server:latest}
     volumes:
       - data:/data

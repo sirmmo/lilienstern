@@ -230,12 +230,11 @@ On Wavedash the game stays behind Wavedash's loading screen until it calls `Wave
 start screen is ready, or says why it is not. Elsewhere (GitHub Pages, a local server) there is no
 `Wavedash` object and the calls do nothing.
 
-**Playing together from Wavedash**: Wavedash serves a game from a subdomain of
-`builds.wavedashcdn.com` (its docs do not say whether one per game or per build), and the server
-only accepts the pages in `LIL_ORIGINS`, matched exactly (with any port). Until that origin
-(`https://<subdomain>.builds.wavedashcdn.com`, seen in the browser once the game is up) is in
-`LIL_ORIGINS` (`deploy/server/stack.yml`), online games on Wavedash are refused; playing alone and
-on one screen work.
+**Playing together from Wavedash and itch.io**: Wavedash serves each game from a subdomain of
+`builds.wavedashcdn.com`, itch.io from a subdomain of `itch.zone`. The server accepts the pages in
+`LIL_ORIGINS` (`deploy/server/stack.yml`): an origin (with any port), or a wildcard host such as
+`https://*.itch.zone` for any subdomain of it; both platforms are on the list, so online games work
+there as on the site.
 
 ## Publishing on itch.io
 

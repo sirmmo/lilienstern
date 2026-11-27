@@ -352,40 +352,22 @@ fn short(v: &Value, max: usize) -> Option<String> {
     v.as_str().map(|s| s.chars().take(max).collect())
 }
 
+/// Is a page at `origin` allowed? An entry is an origin (any port of it too), `*`, or a scheme
+/// and a wildcard host, `https://*.itch.zone`: any subdomain of it (game platforms serve each
+/// game from its own).
 fn allowed(origin: &str, origins: &[String]) -> bool {
-    origins
-        .iter()
-        .any(|a| a == "*" || origin == a || origin.starts_with(&format!("{a}:")))
-}
-
-/// A request's head, peeked at without reading it: (its length, method, path, is it a WebSocket).
-async fn peek_head(stream: &TcpStream) -> Option<(usize, String, String, bool)> {
-    let mut buf = vec![0u8; 8192];
-    for _ in 0..250 {
-        let n = stream.peek(&mut buf).await.ok()?;
-        if n == 0 {
-            return None;
+    origins.iter().any(|a| {
+        if a == "*" || origin == a || origin.starts_with(&format!("{a}:")) {
+            return true;
         }
-        if let Some(end) = buf[..n].windows(4).position(|w| w == b"\r\n\r\n") {
-            let head = String::from_utf8_lossy(&buf[..end]);
-            let mut lines = head.lines();
-            let mut first = lines.next()?.split(' ');
-            let method = first.next()?.to_string();
-            let path = first.next()?.split('?').next()?.to_string();
-            let ws = lines.any(|l| {
-                l.split_once(':').is_some_and(|(k, v)| {
-                    k.trim().eq_ignore_ascii_case("upgrade")
-                        && v.to_ascii_lowercase().contains("websocket")
-                })
-            });
-            return Some((end + 4, method, path, ws));
+        match a.split_once("://*.") {
+            Some((scheme, domain)) => origin
+                .strip_prefix(&format!("{scheme}://"))
+                .map(|host| host.split(':').next().unwrap_or(host))
+                .is_some_and(|host| host.ends_with(&format!(".{domain}"))),
+            None => false,
         }
-        if n == buf.len() {
-            return None; // a head this long is not for us
-        }
-        tokio::time::sleep(Duration::from_millis(20)).await;
-    }
-    None
+    })
 }
 
 const STATS_PAGE: &str = include_str!("stats.html");
@@ -601,4 +583,72 @@ async fn main() {
     }
     // Everything is saved as it happens; nothing more to do.
     eprintln!("lilienstern-server: stopping");
+}
+
+/// A request's head, peeked at without reading it: (its length, method, path, is it a WebSocket).
+async fn peek_head(stream: &TcpStream) -> Option<(usize, String, String, bool)> {
+    let mut buf = vec![0u8; 8192];
+    for _ in 0..250 {
+        let n = stream.peek(&mut buf).await.ok()?;
+        if n == 0 {
+            return None;
+        }
+        if let Some(end) = buf[..n].windows(4).position(|w| w == b"\r\n\r\n") {
+            let head = String::from_utf8_lossy(&buf[..end]);
+            let mut lines = head.lines();
+            let mut first = lines.next()?.split(' ');
+            let method = first.next()?.to_string();
+            let path = first.next()?.split('?').next()?.to_string();
+            let ws = lines.any(|l| {
+                l.split_once(':').is_some_and(|(k, v)| {
+                    k.trim().eq_ignore_ascii_case("upgrade")
+                        && v.to_ascii_lowercase().contains("websocket")
+                })
+            });
+            return Some((end + 4, method, path, ws));
+        }
+        if n == buf.len() {
+            return None; // a head this long is not for us
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::allowed;
+
+    #[test]
+    fn origins_exact_with_ports_and_wildcard_subdomains() {
+        let list: Vec<String> = [
+            "https://ingmmo.com",
+            "http://localhost",
+            "https://*.itch.zone",
+            "https://*.builds.wavedashcdn.com",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+        for ok in [
+            "https://ingmmo.com",
+            "http://localhost:8080",
+            "https://html-classic.itch.zone",
+            "https://abc.def.itch.zone",
+            "https://g1234.builds.wavedashcdn.com",
+        ] {
+            assert!(allowed(ok, &list), "{ok}");
+        }
+        for no in [
+            "https://ingmmo.com.evil.example",
+            "http://html-classic.itch.zone",
+            "https://itch.zone",
+            "https://evilitch.zone",
+            "https://itch.zone.evil.example",
+            "https://builds.wavedashcdn.com.evil.example",
+            "null",
+        ] {
+            assert!(!allowed(no, &list), "{no}");
+        }
+    }
 }
